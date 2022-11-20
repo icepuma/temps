@@ -1,0 +1,10 @@
+[package]
+name = "temps"
+version = "0.0.1"
+edition = "2021"
+authors = ["Stefan Ruzitschka <stefan@icepuma.dev>"]
+repository = "https://github.com/icepuma/temps"
+readme = "README.md"
+license = "WTFPL"
+
+[dependencies]
