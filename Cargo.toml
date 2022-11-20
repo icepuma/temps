@@ -1,6 +1,6 @@
 [package]
 name = "temps"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 authors = ["Stefan Ruzitschka <stefan@icepuma.dev>"]
 repository = "https://github.com/icepuma/temps"
