@@ -2,6 +2,11 @@ on:
   push:
     tags:
       - "temps-v*"
+  workflow_run:
+    workflows: [Release "temps-macros"]
+    types:
+      - completed
+
 name: Release "temps"
 jobs:
   build:
