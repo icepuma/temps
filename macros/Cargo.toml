@@ -1,0 +1,16 @@
+[package]
+name = "temps-macros"
+version = "0.0.3"
+edition = "2021"
+description = "temps-macros"
+authors = ["Stefan Ruzitschka <stefan@icepuma.dev>"]
+repository = "https://github.com/icepuma/temps"
+readme = "README.md"
+license = "WTFPL"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1"
+syn = { version = "1", features = ["parsing"] }
