@@ -1,7 +1,7 @@
 on:
   push:
     tags:
-      - "v*"
+      - "temps-*v*"
 name: Release
 jobs:
   build:
