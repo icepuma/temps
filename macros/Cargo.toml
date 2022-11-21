@@ -1,6 +1,6 @@
 [package]
 name = "temps-macros"
-version = "0.0.7"
+version = "0.0.8"
 edition = "2021"
 description = "temps-macros"
 authors = ["Stefan Ruzitschka <stefan@icepuma.dev>"]
