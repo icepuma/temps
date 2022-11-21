@@ -16,5 +16,6 @@ jobs:
         env:
           CARGO_RELEASE_TOKEN: ${{ secrets.CARGO_RELEASE_TOKEN }}
       - run: cargo publish -p temps-macros
+      - run: sleep 10
       - run: cargo publish -p temps
 
