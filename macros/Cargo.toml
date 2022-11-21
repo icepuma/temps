@@ -5,7 +5,6 @@ edition = "2021"
 description = "temps-macros"
 authors = ["Stefan Ruzitschka <stefan@icepuma.dev>"]
 repository = "https://github.com/icepuma/temps"
-readme = "README.md"
 license = "WTFPL"
 
 [lib]
