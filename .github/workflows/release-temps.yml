@@ -3,11 +3,11 @@ on:
     tags:
       - "temps-v*"
   workflow_run:
-    workflows: [Release "temps-macros"]
+    workflows: ["Release temps-macros"]
     types:
       - completed
 
-name: Release "temps"
+name: Release temps
 jobs:
   build:
     name: Release (crates.io & github.com)
