@@ -2,7 +2,7 @@ on:
   push:
     tags:
       - "temps-macros-v*"
-name: Release
+name: Release "temps-macros"
 jobs:
   build:
     name: Release (crates.io & github.com)
