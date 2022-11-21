@@ -1,6 +1,6 @@
 [package]
 name = "temps"
-version = "0.0.10"
+version = "0.0.11"
 edition = "2021"
 description = "temps is a library for working with time and dates in Rust"
 authors = ["Stefan Ruzitschka <stefan@icepuma.dev>"]
