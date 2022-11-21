@@ -1,7 +1,7 @@
 on:
   push:
     tags:
-      - "temps-*v*"
+      - "temps-v*"
 name: Release
 jobs:
   build:
@@ -14,4 +14,5 @@ jobs:
       - run: cargo login ${CARGO_RELEASE_TOKEN}
         env:
           CARGO_RELEASE_TOKEN: ${{ secrets.CARGO_RELEASE_TOKEN }}
-      - run: cargo publish
+      - run: cargo publish -p temps
+
