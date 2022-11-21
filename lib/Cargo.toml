@@ -9,7 +9,7 @@ readme = "../README.md"
 license = "WTFPL"
 
 [dependencies]
-temps-macros = { path = "../macros", version = "*" }
+temps-macros = { path = "../macros", version = "0" }
 pest = "2"
 pest_derive = "2"
 thiserror = "1"
