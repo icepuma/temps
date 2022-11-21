@@ -1,8 +1,9 @@
 on:
   push:
     tags:
-      - "temps-macros-v*"
-name: Release temps-macros
+      - "temps-v*"
+
+name: Release "temps-macros" and "temps"
 jobs:
   build:
     name: Release (crates.io & github.com)
@@ -15,4 +16,5 @@ jobs:
         env:
           CARGO_RELEASE_TOKEN: ${{ secrets.CARGO_RELEASE_TOKEN }}
       - run: cargo publish -p temps-macros
+      - run: cargo publish -p temps
 
