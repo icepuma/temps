@@ -7,7 +7,7 @@ mod tests {
         let input = "jetzt";
         let actual = crate::parse_time_de(input).unwrap();
 
-        let expected = crate::de::Time::Now;
+        let expected = crate::Time::Now;
 
         assert_eq!(actual, expected);
     }

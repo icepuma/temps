@@ -4,6 +4,7 @@ use syn::{parse_macro_input, Ident};
 
 fn capitalize(input: &str) -> String {
     let mut chars = input.chars();
+
     match chars.next() {
         None => String::new(),
         Some(f) => f.to_uppercase().chain(chars).collect(),
@@ -25,12 +26,20 @@ pub fn time_parser(token_stream: TokenStream) -> TokenStream {
     let expanded = quote! {
         use pest::iterators::Pair;
         use pest::Parser;
+        use thiserror::Error;
 
+        #[derive(Error, Debug)]
+        pub enum #error_name {
+            #[error(transparent)]
+            PestError(#[from] pest::error::Error<crate::#lang::Rule>),
 
+            #[error("unexpected pattern")]
+            UnexpectedPattern,
+        }
 
         pub fn #fn_name(
             input: &str,
-        ) -> Result<crate::#lang::Time, crate::#lang::#error_name> {
+        ) -> Result<Time, #error_name> {
             let pairs =
                 crate::#lang::#time_parser_name::parse(crate::#lang::Rule::time, input)?;
             let pairs = pairs.flatten().collect::<Vec<Pair<crate::#lang::Rule>>>();
@@ -42,9 +51,9 @@ pub fn time_parser(token_stream: TokenStream) -> TokenStream {
 
             match rules_and_str.as_slice() {
                 [(crate::#lang::Rule::now, _), (crate::#lang::Rule::EOI, _)] => {
-                    Ok(crate::#lang::Time::Now)
+                    Ok(Time::Now)
                 }
-                _ => Err(crate::#lang::#error_name::UnexpectedPattern),
+                _ => Err(#error_name::UnexpectedPattern),
             }
         }
     };
