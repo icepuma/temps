@@ -17,15 +17,22 @@ pub enum Language {
 pub enum TempsError {
     #[error(transparent)]
     DeTimeParseError(#[from] DeTimeParseError),
+
+    #[error("unknown language")]
+    UnknownLanguage,
 }
 
 time_parser!(de);
 
 pub fn parse<Tz: chrono::TimeZone>(
     input: &str,
+    language: Language,
     now: chrono::DateTime<Tz>,
 ) -> Result<chrono::DateTime<Tz>, TempsError> {
-    let time = parse_time_de(input)?;
+    let time = match language {
+        Language::De => parse_time_de(input)?,
+    };
+
     Ok(interpreter::interpret(time, now))
 }
 
