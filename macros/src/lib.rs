@@ -26,7 +26,6 @@ pub fn time_parser(token_stream: TokenStream) -> TokenStream {
     let expanded = quote! {
         use pest::iterators::Pair;
         use pest::Parser;
-        use thiserror::Error;
 
         #[derive(Error, Debug)]
         pub enum #error_name {

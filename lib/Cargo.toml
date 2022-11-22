@@ -15,6 +15,7 @@ pest_derive = "2"
 thiserror = "1"
 quote = "1"
 syn = "1"
+chrono = "0.4"
 
 [dev-dependencies]
 pretty_assertions = "1"
