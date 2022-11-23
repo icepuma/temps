@@ -1,61 +1,68 @@
-use proc_macro::{Span, TokenStream};
+use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Ident};
+use syn::{parse_macro_input, Data, DeriveInput};
 
-fn capitalize(input: &str) -> String {
-    let mut chars = input.chars();
+#[proc_macro_derive(TimeParsers, attributes(time_parser))]
+pub fn derived_time_parser(input: TokenStream) -> TokenStream {
+    let name = parse_macro_input!(input as DeriveInput);
 
-    match chars.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().chain(chars).collect(),
-    }
-}
+    let mut output = TokenStream::new();
 
-#[proc_macro]
-pub fn time_parser(token_stream: TokenStream) -> TokenStream {
-    let lang = parse_macro_input!(token_stream as syn::Path);
-    let lang = lang.get_ident().unwrap();
-
-    let span = Span::call_site().into();
-    let fn_name = Ident::new(&format!("parse_time_{}", lang), span);
-    let lang_capitalized = capitalize(&lang.to_string());
-
-    let error_name = Ident::new(&format!("{}TimeParseError", lang_capitalized), span);
-    let time_parser_name = Ident::new(&format!("{}TimeParser", lang_capitalized), span);
-
-    let expanded = quote! {
-        use pest::iterators::Pair;
-        use pest::Parser;
-
-        #[derive(Error, Debug)]
-        pub enum #error_name {
-            #[error(transparent)]
-            PestError(#[from] pest::error::Error<crate::#lang::Rule>),
-
-            #[error("unexpected pattern")]
-            UnexpectedPattern,
+    output.extend(TokenStream::from(quote! {
+        #[derive(Debug, PartialEq, Eq)]
+        pub enum Time {
+            Now,
         }
+    }));
 
-        pub fn #fn_name(
-            input: &str,
-        ) -> Result<Time, #error_name> {
-            let pairs =
-                crate::#lang::#time_parser_name::parse(crate::#lang::Rule::time, input)?;
-            let pairs = pairs.flatten().collect::<Vec<Pair<crate::#lang::Rule>>>();
+    match name.data {
+        Data::Enum(data_enum) => data_enum.variants.iter().for_each(|variant| {
+            let variant_ident = &variant.ident;
+            let grammar_path = format!(
+                "grammars/{}.time.pest",
+                variant_ident.to_string().to_lowercase()
+            );
 
-            let rules_and_str = pairs
-                .iter()
-                .map(|pair| (pair.as_rule(), pair.as_str()))
-                .collect::<Vec<(crate::#lang::Rule, &str)>>();
+            output.extend(TokenStream::from(quote! {
+                pub mod #variant_ident {
+                    use pest::iterators::Pair;
+                    use pest_derive::Parser;
+                    use pest::Parser;
 
-            match rules_and_str.as_slice() {
-                [(crate::#lang::Rule::now, _), (crate::#lang::Rule::EOI, _)] => {
-                    Ok(Time::Now)
+                    #[derive(Parser)]
+                    #[grammar = #grammar_path]
+                    struct TimeParser;
+
+                    #[derive(thiserror::Error, Debug)]
+                    pub enum TimeParseError {
+                        #[error(transparent)]
+                        PestError(#[from] pest::error::Error<Rule>),
+
+                        #[error("unexpected pattern")]
+                        UnexpectedPattern,
+                    }
+
+                    pub fn parse(input: &str) -> Result<crate::Time, TimeParseError> {
+                        let pairs = TimeParser::parse(Rule::time, input)?;
+                        let pairs = pairs.flatten().collect::<Vec<Pair<Rule>>>();
+
+                        let rules_and_str = pairs
+                            .iter()
+                            .map(|pair| (pair.as_rule(), pair.as_str()))
+                            .collect::<Vec<(Rule, &str)>>();
+
+                        match rules_and_str.as_slice() {
+                            [(Rule::now, _), (Rule::EOI, _)] => {
+                                Ok(crate::Time::Now)
+                            }
+                            _ => Err(TimeParseError::UnexpectedPattern),
+                        }
+                    }
                 }
-                _ => Err(#error_name::UnexpectedPattern),
-            }
-        }
-    };
+            }))
+        }),
+        _ => panic!("Only works on enums"),
+    }
 
-    TokenStream::from(expanded)
+    output
 }

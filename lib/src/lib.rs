@@ -1,36 +1,30 @@
-use temps_macros::time_parser;
+use temps_macros::TimeParsers;
 use thiserror::Error;
 
-pub mod de;
 pub mod interpreter;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Time {
-    Now,
-}
-
-pub enum Language {
-    De,
+#[derive(TimeParsers)]
+pub enum LocalizedParsers {
+    #[time_parser]
+    DE,
 }
 
 #[derive(Error, Debug)]
 pub enum TempsError {
     #[error(transparent)]
-    DeTimeParseError(#[from] DeTimeParseError),
+    DeTimeParseError(#[from] crate::DE::TimeParseError),
 
     #[error("unknown language")]
     UnknownLanguage,
 }
 
-time_parser!(de);
-
 pub fn parse<Tz: chrono::TimeZone>(
     input: &str,
-    language: Language,
+    parser: LocalizedParsers,
     now: chrono::DateTime<Tz>,
 ) -> Result<chrono::DateTime<Tz>, TempsError> {
-    let time = match language {
-        Language::De => parse_time_de(input)?,
+    let time = match parser {
+        LocalizedParsers::DE => crate::DE::parse(input)?,
     };
 
     Ok(interpreter::interpret(time, now))
@@ -38,15 +32,15 @@ pub fn parse<Tz: chrono::TimeZone>(
 
 #[cfg(test)]
 mod tests {
-    use pretty_assertions::assert_eq;
+    use chrono::Utc;
+
+    use super::*;
 
     #[test]
-    fn test_parse_now() {
-        let input = "jetzt";
-        let actual = crate::parse_time_de(input).unwrap();
+    fn test_parse_time_de() {
+        let now = Utc::now();
+        let actual = parse("jetzt", LocalizedParsers::DE, now).unwrap();
 
-        let expected = crate::Time::Now;
-
-        assert_eq!(actual, expected);
+        assert_eq!(actual, now);
     }
 }
