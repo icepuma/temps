@@ -10,9 +10,23 @@ pub fn derived_time_parser(input: TokenStream) -> TokenStream {
 
     output.extend(TokenStream::from(quote! {
         #[derive(Debug, PartialEq, Eq)]
+        pub enum Preposition {
+            Next,
+            Last,
+        }
+
+        #[derive(Debug, PartialEq, Eq)]
         pub enum Time {
             Now,
+            DayAt {
+                preposition: Option<Preposition>,
+                day_of_week: chrono::Weekday,
+                hour: u32,
+                minute: u32,
+                second: u32,
+            }
             Date { day: u32, month: u32, year: i32 },
+            Iso { year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32 },
         }
     }));
 
@@ -47,7 +61,7 @@ pub fn derived_time_parser(input: TokenStream) -> TokenStream {
                     }
 
                     pub fn parse(input: &str) -> Result<crate::Time, TimeParseError> {
-                        let pairs = TimeParser::parse(Rule::time, input)?;
+                        let pairs = TimeParser::parse(Rule::times, input)?;
                         let pairs = pairs.flatten().collect::<Vec<Pair<Rule>>>();
 
                         let rules_and_str = pairs
@@ -59,6 +73,28 @@ pub fn derived_time_parser(input: TokenStream) -> TokenStream {
                             [(Rule::now, _), (Rule::EOI, _)] => {
                                 Ok(crate::Time::Now)
                             }
+                            [(Rule::day_at, _), (Rule::day_with_preposition, day_with_preposition), rest @ .., (Rule::EOI, _)] => {
+                                match rest {
+                                    [(Rule::specific_day, specific_day)] =>
+                                }
+                            }
+                            [(Rule::iso, _), (Rule::year, year), (Rule::month, month), (Rule::day, day), rest @ .., (Rule::EOI, _)] => {
+                                let (hour, minute, second) = match rest {
+                                    [(Rule::hour, hour)] => (hour, &"0", &"0"),
+                                    [(Rule::hour, hour), (Rule::minute, minute)] => (hour, minute, &"0"),
+                                    [(Rule::hour, hour), (Rule::minute, minute), (Rule::second, second)] => (hour, minute, second),
+                                    _ => return Err(TimeParseError::UnexpectedPattern),
+                                };
+
+                                Ok(crate::Time::Iso {
+                                    year: year.parse()?,
+                                    month: month.parse()?,
+                                    day: day.parse()?,
+                                    hour: hour.parse()?,
+                                    minute: minute.parse()?,
+                                    second: second.parse()?,
+                                })
+                            }
                             [(Rule::date, _), (Rule::day, day), (Rule::month, month), (Rule::year, year), (Rule::EOI, _)] => {
                                 Ok(crate::Time::Date {
                                     day: day.parse()?,
@@ -66,7 +102,10 @@ pub fn derived_time_parser(input: TokenStream) -> TokenStream {
                                     year: year.parse()?,
                                 })
                             }
-                            _ => Err(TimeParseError::UnexpectedPattern),
+                            _ => {
+                                println!("{:?}", rules_and_str);
+                                Err(TimeParseError::UnexpectedPattern)
+                            },
                         }
                     }
                 }

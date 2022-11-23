@@ -17,5 +17,21 @@ pub(crate) fn interpret<Tz: chrono::TimeZone>(
                 Err(TempsError::ChronoError)
             }
         }
+        Time::Iso {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+        } => {
+            let utc = Utc.with_ymd_and_hms(year, month, day, hour, minute, second);
+
+            if let LocalResult::Single(utc) = utc {
+                Ok(utc.with_timezone(&now.timezone()))
+            } else {
+                Err(TempsError::ChronoError)
+            }
+        }
     }
 }

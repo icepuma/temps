@@ -1,9 +1,21 @@
 now = { "jetzt" }
+specific_day = { "heute" | "morgen" | "gestern" }
+preposition = { "letzter" | "nächster" | "naechster" }
+day_of_week = { "Montag" | "Mo" | "Dienstag" | "Di" | "Mittwoch" | "Mi" | "Donnerstag" | "Do" | "Freitag" | "Fr" | "Samstag" | "Sa" | "Sonntag" | "So" }
+
+day_with_preposition = { (preposition)? ~ WHITESPACE* ~ day_of_week | specific_day }
+time = ${ hour ~ (":" ~ minute)? ~ (":" ~ second)? }
+day_at = ${ day_with_preposition ~ WHITESPACE* ~ ("um" ~ WHITESPACE* ~ time)? }
 date = ${ day ~ date_separator ~ month ~ date_separator ~ year }
-time = _{ SOI ~ (now | date) ~ EOI }
+iso = ${ year ~ "-" ~ month ~ "-" ~ day ~ "T" ~ hour ~ (":" ~ minute)? ~ (":" ~ second)? }
+
+times = _{ SOI ~ (now | date | iso | day_at) ~ EOI }
 
 date_separator = _{ "." }
 
+hour = { ASCII_DIGIT{2} }
+minute = { ASCII_DIGIT{2} }
+second = { ASCII_DIGIT{2} }
 day = { ASCII_DIGIT{2} }
 month = { ASCII_DIGIT{2} }
 year = { ASCII_DIGIT{4} }

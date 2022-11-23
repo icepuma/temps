@@ -55,4 +55,31 @@ mod tests {
 
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn de_test_parse_iso() {
+        let now = Utc::now();
+        let expected = Utc.with_ymd_and_hms(1990, 10, 10, 10, 0, 0).unwrap();
+        let actual = parse("1990-10-10T10", LocalizedParsers::DE, now).unwrap();
+
+        assert_eq!(actual, expected);
+
+        let expected = Utc.with_ymd_and_hms(1990, 10, 10, 10, 10, 0).unwrap();
+        let actual = parse("1990-10-10T10:10", LocalizedParsers::DE, now).unwrap();
+
+        assert_eq!(actual, expected);
+
+        let expected = Utc.with_ymd_and_hms(1990, 10, 10, 10, 10, 10).unwrap();
+        let actual = parse("1990-10-10T10:10:10", LocalizedParsers::DE, now).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn de_test_parse_day_at() {
+        let now = Utc::now();
+        let actual = parse("naechster Mittwoch um 12", LocalizedParsers::DE, now).unwrap();
+
+        assert_eq!(actual, now);
+    }
 }
