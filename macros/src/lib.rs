@@ -12,6 +12,7 @@ pub fn derived_time_parser(input: TokenStream) -> TokenStream {
         #[derive(Debug, PartialEq, Eq)]
         pub enum Time {
             Now,
+            Date { day: u32, month: u32, year: i32 },
         }
     }));
 
@@ -35,6 +36,9 @@ pub fn derived_time_parser(input: TokenStream) -> TokenStream {
 
                     #[derive(thiserror::Error, Debug)]
                     pub enum TimeParseError {
+                        #[error("invalid integer")]
+                        ParseInt(#[from] std::num::ParseIntError),
+
                         #[error(transparent)]
                         PestError(#[from] pest::error::Error<Rule>),
 
@@ -54,6 +58,13 @@ pub fn derived_time_parser(input: TokenStream) -> TokenStream {
                         match rules_and_str.as_slice() {
                             [(Rule::now, _), (Rule::EOI, _)] => {
                                 Ok(crate::Time::Now)
+                            }
+                            [(Rule::date, _), (Rule::day, day), (Rule::month, month), (Rule::year, year), (Rule::EOI, _)] => {
+                                Ok(crate::Time::Date {
+                                    day: day.parse()?,
+                                    month: month.parse()?,
+                                    year: year.parse()?,
+                                })
                             }
                             _ => Err(TimeParseError::UnexpectedPattern),
                         }

@@ -1,3 +1,11 @@
 now = { "jetzt" }
+date = ${ day ~ date_separator ~ month ~ date_separator ~ year }
+time = _{ SOI ~ (now | date) ~ EOI }
 
-time = _{ SOI ~ (now) ~ EOI }
+date_separator = _{ "." }
+
+day = { ASCII_DIGIT{2} }
+month = { ASCII_DIGIT{2} }
+year = { ASCII_DIGIT{4} }
+
+WHITESPACE = _{ " " }
