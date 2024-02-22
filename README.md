@@ -1,7 +1,7 @@
 # temps
 
 ![https://crates.io/crates/fbtoggl](https://img.shields.io/crates/v/temps)
-![https://github.com/icepuma/temps/actions/workflows/ci.yaml](https://github.com/icepuma/temps/actions/workflows/ci.yaml/badge.svg)
+![https://github.com/icepuma/temps/actions/workflows/ci.yml](https://github.com/icepuma/temps/actions/workflows/ci.yml/badge.svg)
 
 `temps` or `[tã]` is a library for working with time and dates in Rust.
 
