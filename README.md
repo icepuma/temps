@@ -10,7 +10,7 @@
 Add `temps` to your `Cargo.toml`.
 
 ```toml
-temps = "0.1"
+temps = "0"
 ```
 
 ## hh:mm:ss
