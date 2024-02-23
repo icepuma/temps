@@ -1,2 +1,18 @@
-[workspace]
-members = ["macros", "lib"]
+[package]
+name = "temps"
+version = "0.0.12"
+edition = "2021"
+description = "temps is a library for working with time and dates in Rust"
+authors = ["Stefan Ruzitschka <stefan@icepuma.dev>"]
+repository = "https://github.com/icepuma/temps"
+readme = "README.md"
+license-file = "LICENSE"
+
+[features]
+default = []
+chrono = ["dep:chrono"]
+time = ["dep:time"]
+
+[dependencies]
+chrono = { version = "0.4", optional = true }
+time = { version = "0.3", optional = true }
