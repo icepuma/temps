@@ -1,0 +1,17 @@
+[package]
+name = "temps-jiff"
+version.workspace = true
+edition.workspace = true
+description = "Jiff integration for temps - time and date parsing library"
+authors.workspace = true
+repository.workspace = true
+readme = "../README.md"
+license.workspace = true
+
+[dependencies]
+temps-core = { path = "../temps-core", version = "1.0.0" }
+jiff = "0.2"
+
+[dev-dependencies]
+mockall = "0.13"
+temps-testhelpers = { path = "../temps-testhelpers", version = "1.0.0", features = ["jiff"] }

@@ -1,0 +1,20 @@
+[workspace]
+changelog_update = true
+semver_check = true
+dependencies_update = true
+git_release_enable = true
+
+[[package]]
+name = "temps-core"
+
+[[package]]
+name = "temps-chrono"
+
+[[package]]
+name = "temps-jiff"
+
+[[package]]
+name = "temps"
+
+[[package]]
+name = "temps-testhelpers"

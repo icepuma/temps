@@ -1,0 +1,16 @@
+[package]
+name = "temps-core"
+version.workspace = true
+edition.workspace = true
+description = "Core functionality for temps - time and date parsing library"
+authors.workspace = true
+repository.workspace = true
+readme = "../README.md"
+license.workspace = true
+
+[dependencies]
+winnow = "0.7.10"
+
+[dev-dependencies]
+mockall = "0.13"
+temps-testhelpers = { path = "../temps-testhelpers", version = "1.0.0" }
