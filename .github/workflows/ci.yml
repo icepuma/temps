@@ -12,5 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
       - run: cargo fmt -- --check && cargo clippy -- -Dwarnings
-      - run: cargo test --all-features
+      - run: cargo nextest run --all-features

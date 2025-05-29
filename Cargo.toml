@@ -1,18 +1,10 @@
-[package]
-name = "temps"
-version = "0.0.15"
-edition = "2021"
-description = "temps is a library for working with time and dates in Rust"
+[workspace]
+members = ["temps", "temps-core", "temps-chrono", "temps-jiff", "temps-testhelpers"]
+resolver = "3"
+
+[workspace.package]
+version = "1.0.0"
+edition = "2024"
 authors = ["Stefan Ruzitschka <stefan@icepuma.dev>"]
-repository = "https://github.com/icepuma/temps"
-readme = "README.md"
-license-file = "LICENSE"
-
-[features]
-default = []
-chrono = ["dep:chrono"]
-time = ["dep:time"]
-
-[dependencies]
-chrono = { version = "0.4", optional = true }
-time = { version = "0.3", optional = true }
+repository = "https://github.com/korora-tech/temps"
+license = "MIT OR Apache-2.0"

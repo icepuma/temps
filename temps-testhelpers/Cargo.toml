@@ -1,0 +1,20 @@
+[package]
+name = "temps-testhelpers"
+version.workspace = true
+edition.workspace = true
+description = "Test helpers and mocks for temps - time and date parsing library"
+authors.workspace = true
+repository.workspace = true
+readme = "../README.md"
+license.workspace = true
+
+[dependencies]
+temps-core = { path = "../temps-core", version = "1.0.0" }
+chrono = { version = "0.4.41", optional = true }
+jiff = { version = "0.2", optional = true }
+mockall = "0.13"
+
+[features]
+default = []
+chrono = ["dep:chrono"]
+jiff = ["dep:jiff"]
