@@ -14,4 +14,4 @@ jiff = "0.2"
 
 [dev-dependencies]
 mockall = "0.13"
-temps-testhelpers = { path = "../temps-testhelpers", version = "1.0.0", features = ["jiff"] }
+temps-testhelpers = { path = "../temps-testhelpers", features = ["jiff"] }

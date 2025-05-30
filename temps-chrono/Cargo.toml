@@ -14,4 +14,4 @@ chrono = "0.4.41"
 
 [dev-dependencies]
 mockall = "0.13"
-temps-testhelpers = { path = "../temps-testhelpers", version = "1.0.0", features = ["chrono"] }
+temps-testhelpers = { path = "../temps-testhelpers", features = ["chrono"] }
