@@ -52,6 +52,30 @@ impl TimeParser for JiffProvider {
                     .map_err(|e| format!("{}: {}", ERR_INVALID_DATE, e))?;
 
                 if let (Some(hour), Some(minute)) = (abs.hour, abs.minute) {
+                    // Validate hour is in valid range (0-23)
+                    if hour > 23 {
+                        return Err(format!(
+                            "{}: hour must be between 0 and 23, got {}",
+                            ERR_INVALID_TIME, hour
+                        ));
+                    }
+                    // Validate minute is in valid range (0-59)
+                    if minute > 59 {
+                        return Err(format!(
+                            "{}: minute must be between 0 and 59, got {}",
+                            ERR_INVALID_TIME, minute
+                        ));
+                    }
+                    // Validate second is in valid range (0-59)
+                    if let Some(second) = abs.second {
+                        if second > 59 {
+                            return Err(format!(
+                                "{}: second must be between 0 and 59, got {}",
+                                ERR_INVALID_TIME, second
+                            ));
+                        }
+                    }
+
                     let time = Time::new(
                         hour as i8,
                         minute as i8,
@@ -150,9 +174,29 @@ impl TimeParser for JiffProvider {
             TimeExpression::Time(time) => {
                 let now = self.now();
                 let date = now.date();
-                let hour = convert_12_to_24_hour(time.hour, time.meridiem.as_ref()) as i8;
+                let hour = convert_12_to_24_hour(time.hour, time.meridiem.as_ref());
 
-                date.at(hour, time.minute as i8, time.second as i8, 0)
+                // Validate time components
+                if hour > 23 {
+                    return Err(format!(
+                        "{}: hour must be between 0 and 23, got {}",
+                        ERR_INVALID_TIME, hour
+                    ));
+                }
+                if time.minute > 59 {
+                    return Err(format!(
+                        "{}: minute must be between 0 and 59, got {}",
+                        ERR_INVALID_TIME, time.minute
+                    ));
+                }
+                if time.second > 59 {
+                    return Err(format!(
+                        "{}: second must be between 0 and 59, got {}",
+                        ERR_INVALID_TIME, time.second
+                    ));
+                }
+
+                date.at(hour as i8, time.minute as i8, time.second as i8, 0)
                     .to_zoned(now.time_zone().clone())
                     .map_err(|e| format!("Failed to create time: {}", e))
             }
@@ -163,11 +207,30 @@ impl TimeParser for JiffProvider {
                 let date = day_result.date();
 
                 let hour =
-                    convert_12_to_24_hour(day_time.time.hour, day_time.time.meridiem.as_ref())
-                        as i8;
+                    convert_12_to_24_hour(day_time.time.hour, day_time.time.meridiem.as_ref());
+
+                // Validate time components
+                if hour > 23 {
+                    return Err(format!(
+                        "{}: hour must be between 0 and 23, got {}",
+                        ERR_INVALID_TIME, hour
+                    ));
+                }
+                if day_time.time.minute > 59 {
+                    return Err(format!(
+                        "{}: minute must be between 0 and 59, got {}",
+                        ERR_INVALID_TIME, day_time.time.minute
+                    ));
+                }
+                if day_time.time.second > 59 {
+                    return Err(format!(
+                        "{}: second must be between 0 and 59, got {}",
+                        ERR_INVALID_TIME, day_time.time.second
+                    ));
+                }
 
                 date.at(
-                    hour,
+                    hour as i8,
                     day_time.time.minute as i8,
                     day_time.time.second as i8,
                     0,
