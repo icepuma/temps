@@ -6,7 +6,6 @@ git_release_enable = true
 
 [[package]]
 name = "temps-core"
-version_group = "core"
 
 [[package]]
 name = "temps-chrono"
@@ -19,4 +18,3 @@ name = "temps"
 
 [[package]]
 name = "temps-testhelpers"
-version_group = "core"
