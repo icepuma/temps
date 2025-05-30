@@ -5,6 +5,9 @@ dependencies_update = true
 git_release_enable = true
 
 [[package]]
+name = "temps-testhelpers"
+
+[[package]]
 name = "temps-core"
 
 [[package]]
@@ -15,6 +18,3 @@ name = "temps-jiff"
 
 [[package]]
 name = "temps"
-
-[[package]]
-name = "temps-testhelpers"
