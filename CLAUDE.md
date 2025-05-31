@@ -14,19 +14,19 @@ This is a Rust workspace project with four crates:
 
 ### After Completing Any Task
 
-**ALWAYS run `./check.sh` after making changes** to ensure:
+**ALWAYS run `just check` after making changes** to ensure:
 - Code is properly formatted
 - All clippy warnings are addressed
 - All tests pass
 - The workspace builds successfully
 
 ```bash
-cd /Users/icepuma/development/temps && ./check.sh
+cd /Users/icepuma/development/temps && just check
 ```
 
-**IMPORTANT**: Only use `./check.sh` to run tests. Do not use `cargo test` directly.
+**IMPORTANT**: Only use `just test` to run tests. Do not use `cargo test` directly.
 
-### If check.sh Reports Issues
+### If just check Reports Issues
 
 1. **Formatting issues**: The script runs `cargo fmt --all` automatically
 2. **Clippy warnings**: Fix all warnings before considering the task complete
@@ -50,9 +50,9 @@ cd /Users/icepuma/development/temps && ./check.sh
 ## Testing Guidelines
 
 ### Running Tests
-**Always use `./check.sh` to run tests.** This ensures:
-- Code is formatted before testing
-- Clippy checks are run
+**Always use `just test` to run tests or `just check` for a complete check.** This ensures:
+- Code is formatted before testing (with `just check`)
+- Clippy checks are run (with `just check`)
 - Tests are run with nextest for better output
 - All features are properly enabled
 
@@ -68,19 +68,29 @@ cd /Users/icepuma/development/temps && ./check.sh
 3. **Documentation**: Add doc comments for public APIs
 4. **Feature flags**: Respect feature boundaries - chrono-specific code only when chrono feature is enabled
 
-## The check.sh Script
+## The Justfile Commands
 
-The `check.sh` script performs the following in order:
-1. `cargo fmt --all` - Formats all code
-2. `cargo clippy --workspace --tests --all-features --all-targets` - Runs clippy checks
-3. `cargo nextest run --workspace --all-features` - Runs all tests with nextest
+The `just check` command performs the following in order:
+1. `just format` - Runs `cargo fmt --all` to format all code
+2. `just lint` - Runs `cargo clippy --workspace --tests --examples --all-features --all-targets` for clippy checks
+3. `just test` - Runs `cargo nextest run --workspace --all-features` for all tests
+4. `just examples` - Runs both chrono and jiff examples to ensure they compile and execute
 
-**Always use this script instead of running individual commands.**
+Available Just commands:
+- `just` or `just check` - Run complete check (format, lint, test, examples)
+- `just format` - Format all code
+- `just lint` - Run clippy checks
+- `just test` - Run all tests with nextest
+- `just examples` - Run all examples
+- `just example-chrono` - Run chrono example only
+- `just example-jiff` - Run jiff example only
+
+**Always use these Just commands instead of running cargo commands directly.**
 
 ## Important Notes
 
 - This is a library project - avoid creating unnecessary binaries or examples
 - The workspace uses resolver version 3
 - All crates share workspace-level package metadata
-- Always verify changes work by running `./check.sh`
-- Never commit code without running `./check.sh` first
+- Always verify changes work by running `just check`
+- Never commit code without running `just check` first
