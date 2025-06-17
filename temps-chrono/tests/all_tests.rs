@@ -221,13 +221,12 @@ impl<T: TimeSource> TestableChronoProvider<T> {
 
 impl<T: TimeSource> TimeParser for TestableChronoProvider<T> {
     type DateTime = DateTime<Local>;
-    type Error = String;
 
     fn now(&self) -> Self::DateTime {
         self.time_source.now()
     }
 
-    fn parse_expression(&self, expr: TimeExpression) -> Result<Self::DateTime, Self::Error> {
+    fn parse_expression(&self, expr: TimeExpression) -> temps_core::Result<Self::DateTime> {
         let now = self.now();
         match expr {
             TimeExpression::Now => Ok(now),
@@ -271,32 +270,42 @@ impl<T: TimeSource> TimeParser for TestableChronoProvider<T> {
                         }
                     }
                     TimeUnit::Month => {
-                        let months =
-                            Months::new(rel.amount.try_into().map_err(|_| {
-                                "Month amount must be a positive number".to_string()
-                            })?);
+                        let months = Months::new(rel.amount.try_into().map_err(|_| {
+                            temps_core::TempsError::date_calculation(
+                                "Month amount must be a positive number",
+                            )
+                        })?);
 
                         match rel.direction {
                             Direction::Past => now.checked_sub_months(months).ok_or_else(|| {
-                                "Date calculation resulted in invalid date".to_string()
+                                temps_core::TempsError::date_calculation(
+                                    "Date calculation resulted in invalid date",
+                                )
                             }),
                             Direction::Future => now.checked_add_months(months).ok_or_else(|| {
-                                "Date calculation resulted in invalid date".to_string()
+                                temps_core::TempsError::date_calculation(
+                                    "Date calculation resulted in invalid date",
+                                )
                             }),
                         }
                     }
                     TimeUnit::Year => {
-                        let months =
-                            Months::new((rel.amount * 12).try_into().map_err(|_| {
-                                "Year amount must be a positive number".to_string()
-                            })?);
+                        let months = Months::new((rel.amount * 12).try_into().map_err(|_| {
+                            temps_core::TempsError::date_calculation(
+                                "Year amount must be a positive number",
+                            )
+                        })?);
 
                         match rel.direction {
                             Direction::Past => now.checked_sub_months(months).ok_or_else(|| {
-                                "Date calculation resulted in invalid date".to_string()
+                                temps_core::TempsError::date_calculation(
+                                    "Date calculation resulted in invalid date",
+                                )
                             }),
                             Direction::Future => now.checked_add_months(months).ok_or_else(|| {
-                                "Date calculation resulted in invalid date".to_string()
+                                temps_core::TempsError::date_calculation(
+                                    "Date calculation resulted in invalid date",
+                                )
                             }),
                         }
                     }

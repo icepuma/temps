@@ -147,13 +147,12 @@ impl<T: TimeSource> TestableJiffProvider<T> {
 
 impl<T: TimeSource> TimeParser for TestableJiffProvider<T> {
     type DateTime = Zoned;
-    type Error = String;
 
     fn now(&self) -> Self::DateTime {
         self.time_source.now()
     }
 
-    fn parse_expression(&self, expr: TimeExpression) -> Result<Self::DateTime, Self::Error> {
+    fn parse_expression(&self, expr: TimeExpression) -> temps_core::Result<Self::DateTime> {
         let now = self.now();
         match expr {
             TimeExpression::Now => Ok(now),
@@ -170,12 +169,18 @@ impl<T: TimeSource> TimeParser for TestableJiffProvider<T> {
                 };
 
                 match rel.direction {
-                    Direction::Past => now
-                        .checked_sub(span)
-                        .map_err(|e| format!("Failed to subtract time: {}", e)),
-                    Direction::Future => now
-                        .checked_add(span)
-                        .map_err(|e| format!("Failed to add time: {}", e)),
+                    Direction::Past => now.checked_sub(span).map_err(|e| {
+                        temps_core::TempsError::date_calculation_with_source(
+                            "Failed to subtract time",
+                            e.to_string(),
+                        )
+                    }),
+                    Direction::Future => now.checked_add(span).map_err(|e| {
+                        temps_core::TempsError::date_calculation_with_source(
+                            "Failed to add time",
+                            e.to_string(),
+                        )
+                    }),
                 }
             }
             TimeExpression::Absolute(abs) => {

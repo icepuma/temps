@@ -5,8 +5,8 @@ use winnow::{
 };
 
 use crate::{
-    DayReference, DayTime, Direction, LanguageParser, Meridiem, RelativeTime, StandardDate, Time,
-    TimeExpression, TimeUnit, Weekday, WeekdayModifier, common,
+    DayReference, DayTime, Direction, LanguageParser, Meridiem, RelativeTime, Result, StandardDate,
+    Time, TimeExpression, TimeUnit, Weekday, WeekdayModifier, common, error::ParseErrorExt,
 };
 
 pub struct EnglishParser;
@@ -308,11 +308,7 @@ impl EnglishParser {
 }
 
 impl LanguageParser for EnglishParser {
-    fn parse<'a>(
-        &self,
-        input: &'a str,
-    ) -> Result<TimeExpression, winnow::error::ParseError<&'a str, winnow::error::ContextError>>
-    {
+    fn parse(&self, input: &str) -> Result<TimeExpression> {
         delimited(
             multispace0,
             alt((
@@ -328,5 +324,6 @@ impl LanguageParser for EnglishParser {
             multispace0,
         )
         .parse(input)
+        .map_err(|e| e.to_temps_error(input))
     }
 }

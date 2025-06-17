@@ -171,7 +171,7 @@ fn test_mixed_case() {
 #[automock]
 trait MockableTimeParser: Send + Sync {
     fn get_current_time(&self) -> i64;
-    fn parse_time_expression(&self, expr: &str, lang: Language) -> Result<i64, String>;
+    fn parse_time_expression(&self, expr: &str, lang: Language) -> temps_core::Result<i64>;
 }
 
 // A service that uses our mockable provider
@@ -184,18 +184,18 @@ impl<T: MockableTimeParser> TimeService<T> {
         Self { provider }
     }
 
-    fn parse_and_calculate_offset(&self, expr: &str, lang: Language) -> Result<i64, String> {
+    fn parse_and_calculate_offset(&self, expr: &str, lang: Language) -> temps_core::Result<i64> {
         let parsed_time = self.provider.parse_time_expression(expr, lang)?;
         let current_time = self.provider.get_current_time();
         Ok(parsed_time - current_time)
     }
 
-    fn is_in_past(&self, expr: &str, lang: Language) -> Result<bool, String> {
+    fn is_in_past(&self, expr: &str, lang: Language) -> temps_core::Result<bool> {
         let offset = self.parse_and_calculate_offset(expr, lang)?;
         Ok(offset < 0)
     }
 
-    fn is_in_future(&self, expr: &str, lang: Language) -> Result<bool, String> {
+    fn is_in_future(&self, expr: &str, lang: Language) -> temps_core::Result<bool> {
         let offset = self.parse_and_calculate_offset(expr, lang)?;
         Ok(offset > 0)
     }
@@ -269,12 +269,18 @@ fn test_error_handling_with_mock() {
     mock.expect_parse_time_expression()
         .with(eq("invalid expression"), eq(Language::English))
         .times(1)
-        .return_const(Err("Failed to parse expression".to_string()));
+        .return_const(Err(temps_core::TempsError::parse_error(
+            "Failed to parse expression",
+            "invalid expression",
+        )));
 
     let service = TimeService::new(mock);
     let result = service.parse_and_calculate_offset("invalid expression", Language::English);
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Failed to parse expression");
+    assert_eq!(
+        result.unwrap_err(),
+        temps_core::TempsError::parse_error("Failed to parse expression", "invalid expression")
+    );
 }
 
 // Define a trait that can be mocked for date/time operations

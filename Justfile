@@ -13,6 +13,10 @@ lint:
 test:
     cargo nextest run --workspace --all-features
 
+# Run documentation tests
+doc-test:
+    cargo test --doc --workspace --all-features
+
 # Run chrono example
 example-chrono:
     @echo "Running chrono example..."
@@ -26,5 +30,5 @@ example-jiff:
 # Run all examples
 examples: example-chrono example-jiff
 
-# Run complete check (format, lint, test, examples)
-check: format lint test examples
+# Run complete check (format, lint, test, doc-test, examples)
+check: format lint test doc-test examples
