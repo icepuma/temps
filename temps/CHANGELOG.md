@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0](https://github.com/korora-tech/temps/compare/temps-v1.1.0...temps-v2.0.0) - 2025-06-17
+
+### Added
+
+- implement comprehensive error handling and API documentation
+
 ## [1.1.0](https://github.com/korora-tech/temps/compare/temps-v1.0.0...temps-v1.1.0) - 2025-05-30
 
 ### Added
