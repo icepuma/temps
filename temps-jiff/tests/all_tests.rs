@@ -276,7 +276,7 @@ fn test_english_time_expressions_with_mock() {
     for (input, expected) in test_cases {
         let expr = parse(input, Language::English).unwrap();
         let result = provider.parse_expression(expr).unwrap();
-        assert_eq!(result, expected, "Failed for input: {}", input);
+        assert_eq!(result, expected, "Failed for input: {input}");
     }
 }
 
@@ -358,7 +358,7 @@ fn test_german_time_expressions_with_mock() {
     for (input, expected) in test_cases {
         let expr = parse(input, Language::German).unwrap();
         let result = provider.parse_expression(expr).unwrap();
-        assert_eq!(result, expected, "Failed for input: {}", input);
+        assert_eq!(result, expected, "Failed for input: {input}");
     }
 }
 
@@ -506,7 +506,7 @@ fn test_complex_expressions_with_articles() {
     for (input, expected) in english_cases {
         let expr = parse(input, Language::English).unwrap();
         let result = provider.parse_expression(expr).unwrap();
-        assert_eq!(result, expected, "Failed for input: {}", input);
+        assert_eq!(result, expected, "Failed for input: {input}");
     }
 }
 
@@ -555,7 +555,7 @@ fn test_german_articles_with_time_calculations() {
     for (input, expected) in german_cases {
         let expr = parse(input, Language::German).unwrap();
         let result = provider.parse_expression(expr).unwrap();
-        assert_eq!(result, expected, "Failed for input: {}", input);
+        assert_eq!(result, expected, "Failed for input: {input}");
     }
 }
 
@@ -622,7 +622,7 @@ fn test_month_year_calculations_with_spans() {
         };
         let expr = parse(input, lang).unwrap();
         let result = provider.parse_expression(expr).unwrap();
-        assert_eq!(result, expected, "Failed for input: {}", input);
+        assert_eq!(result, expected, "Failed for input: {input}");
     }
 
     // Test year calculations
@@ -657,7 +657,7 @@ fn test_month_year_calculations_with_spans() {
         };
         let expr = parse(input, lang).unwrap();
         let result = provider.parse_expression(expr).unwrap();
-        assert_eq!(result, expected, "Failed for input: {}", input);
+        assert_eq!(result, expected, "Failed for input: {input}");
     }
 }
 
@@ -674,7 +674,7 @@ fn test_day_references_with_jiff() {
 
     for (input, lang) in test_cases {
         let result = parse_to_zoned(input, lang);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let datetime = result.unwrap();
         // Should return midnight of the respective day
         assert_eq!(datetime.hour(), 0);
@@ -704,7 +704,7 @@ fn test_weekday_parsing_with_jiff() {
 
     for input in test_cases {
         let result = parse_to_zoned(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let datetime = result.unwrap();
         // Should return midnight
         assert_eq!(datetime.hour(), 0);
@@ -726,7 +726,7 @@ fn test_time_parsing_with_jiff() {
 
     for (input, expected_hour, expected_minute) in test_cases {
         let result = parse_to_zoned(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let datetime = result.unwrap();
         assert_eq!(datetime.hour(), expected_hour);
         assert_eq!(datetime.minute(), expected_minute);
@@ -758,7 +758,7 @@ fn test_date_parsing_with_jiff() {
 
     for (input, year, month, day) in test_cases {
         let result = parse_to_zoned(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let datetime = result.unwrap();
         assert_eq!(datetime.year(), year);
         assert_eq!(datetime.month(), month);

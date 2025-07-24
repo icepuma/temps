@@ -566,17 +566,17 @@ pub mod errors {
 
     /// Format error message for invalid date with components
     pub fn format_invalid_date(year: u16, month: u8, day: u8) -> String {
-        format!("Invalid date: {}-{}-{}", year, month, day)
+        format!("Invalid date: {year}-{month}-{day}")
     }
 
     /// Format error message for invalid time with components
     pub fn format_invalid_time(hour: u8, minute: u8, second: u8) -> String {
-        format!("Invalid time: {}:{}:{}", hour, minute, second)
+        format!("Invalid time: {hour}:{minute}:{second}")
     }
 
     /// Format error message for invalid timezone offset
     pub fn format_invalid_timezone_offset(hours: i8, minutes: u8) -> String {
-        format!("Invalid timezone offset: {}:{}", hours, minutes)
+        format!("Invalid timezone offset: {hours}:{minutes}")
     }
 }
 

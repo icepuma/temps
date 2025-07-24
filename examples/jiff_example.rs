@@ -25,8 +25,8 @@ fn main() {
 
     for expr in examples {
         match parse_to_zoned(expr, Language::English) {
-            Ok(dt) => println!("  '{}' => {}", expr, dt),
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Ok(dt) => println!("  '{expr}' => {dt}"),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -43,8 +43,8 @@ fn main() {
 
     for expr in past_examples {
         match parse_to_zoned(expr, Language::English) {
-            Ok(dt) => println!("  '{}' => {}", expr, dt),
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Ok(dt) => println!("  '{expr}' => {dt}"),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -63,12 +63,12 @@ fn main() {
     for expr in absolute_examples {
         match parse_to_zoned(expr, Language::English) {
             Ok(dt) => {
-                println!("  '{}' =>", expr);
-                println!("    Formatted: {}", dt);
+                println!("  '{expr}' =>");
+                println!("    Formatted: {dt}");
                 println!("    Unix timestamp: {}", dt.timestamp().as_second());
                 println!("    Timezone: {:?}", dt.time_zone());
             }
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -90,7 +90,7 @@ fn main() {
             Ok(dt) => {
                 println!("  '{}' => {} ({:?})", expr, dt.date(), dt.weekday());
             }
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -105,7 +105,7 @@ fn main() {
             Ok(dt) => {
                 println!("  '{}' => Today at {}", expr, dt.time());
             }
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -130,7 +130,7 @@ fn main() {
                     dt.weekday()
                 );
             }
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -145,7 +145,7 @@ fn main() {
             Ok(dt) => {
                 println!("  '{}' => {}", expr, dt.date());
             }
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -155,7 +155,7 @@ fn main() {
 
     let provider = JiffProvider;
     let now = provider.now();
-    println!("  Current time: {}", now);
+    println!("  Current time: {now}");
 
     // Create a relative time expression manually
     let expr = TimeExpression::Relative(RelativeTime {
@@ -166,10 +166,10 @@ fn main() {
 
     match provider.parse_expression(expr) {
         Ok(dt) => {
-            println!("  30 days from now: {}", dt);
+            println!("  30 days from now: {dt}");
             println!("  That's a {:?}", dt.weekday());
         }
-        Err(e) => println!("  Error: {}", e),
+        Err(e) => println!("  Error: {e}"),
     }
 
     // Example 8: Working with different languages
@@ -186,8 +186,8 @@ fn main() {
     println!("  German examples:");
     for (german, english) in german_examples {
         match parse_to_zoned(german, Language::German) {
-            Ok(dt) => println!("    '{}' ({}) => {}", german, english, dt),
-            Err(e) => println!("    '{}' => Error: {}", german, e),
+            Ok(dt) => println!("    '{german}' ({english}) => {dt}"),
+            Err(e) => println!("    '{german}' => Error: {e}"),
         }
     }
 
@@ -203,8 +203,8 @@ fn main() {
 
     for expr in invalid_examples {
         match parse_to_zoned(expr, Language::English) {
-            Ok(_) => println!("  '{}' => Unexpectedly succeeded!", expr),
-            Err(e) => println!("  '{}' => Error (expected): {}", expr, e),
+            Ok(_) => println!("  '{expr}' => Unexpectedly succeeded!"),
+            Err(e) => println!("  '{expr}' => Error (expected): {e}"),
         }
     }
 
@@ -213,7 +213,7 @@ fn main() {
     println!("----------------------------------------");
 
     let now = Zoned::now();
-    println!("  Current time: {}", now);
+    println!("  Current time: {now}");
 
     let schedule = vec![
         ("in 15 minutes", "Quick sync meeting"),
@@ -229,7 +229,7 @@ fn main() {
                 // Calculate the span between now and the scheduled time
                 match now.until(&dt) {
                     Ok(span) => {
-                        println!("    • {} - {}", task, dt);
+                        println!("    • {task} - {dt}");
 
                         // Format the duration in a human-readable way
                         if span.get_days() > 0 {
@@ -249,10 +249,10 @@ fn main() {
                             println!("      (in {} minutes)", span.get_minutes());
                         }
                     }
-                    Err(e) => println!("    • {} - Error calculating duration: {}", task, e),
+                    Err(e) => println!("    • {task} - Error calculating duration: {e}"),
                 }
             }
-            Err(e) => println!("    • {} - Error: {}", task, e),
+            Err(e) => println!("    • {task} - Error: {e}"),
         }
     }
 
@@ -262,27 +262,27 @@ fn main() {
 
     match parse_to_zoned("2024-12-25T15:30:00+05:30", Language::English) {
         Ok(dt) => {
-            println!("  Original time: {}", dt);
+            println!("  Original time: {dt}");
 
             // Convert to different timezones using jiff's timezone support
             use jiff::tz::TimeZone;
 
             if let Ok(utc_tz) = TimeZone::get("UTC") {
                 let utc_time = dt.with_time_zone(utc_tz);
-                println!("  In UTC: {}", utc_time);
+                println!("  In UTC: {utc_time}");
             }
 
             if let Ok(ny_tz) = TimeZone::get("America/New_York") {
                 let ny_time = dt.with_time_zone(ny_tz);
-                println!("  In New York: {}", ny_time);
+                println!("  In New York: {ny_time}");
             }
 
             if let Ok(tokyo_tz) = TimeZone::get("Asia/Tokyo") {
                 let tokyo_time = dt.with_time_zone(tokyo_tz);
-                println!("  In Tokyo: {}", tokyo_time);
+                println!("  In Tokyo: {tokyo_time}");
             }
         }
-        Err(e) => println!("  Error: {}", e),
+        Err(e) => println!("  Error: {e}"),
     }
 
     // Example 12: Working with spans and date arithmetic
@@ -291,7 +291,7 @@ fn main() {
 
     match parse_to_zoned("2024-01-31", Language::English) {
         Ok(dt) => {
-            println!("  Starting date: {}", dt);
+            println!("  Starting date: {dt}");
 
             // Add various spans to see jiff's smart date handling
             use jiff::Span;
@@ -305,12 +305,9 @@ fn main() {
             if let Ok(complex) =
                 dt.checked_add(Span::new().years(1).months(2).days(15).hours(3).minutes(30))
             {
-                println!(
-                    "  + 1 year, 2 months, 15 days, 3 hours, 30 minutes: {}",
-                    complex
-                );
+                println!("  + 1 year, 2 months, 15 days, 3 hours, 30 minutes: {complex}");
             }
         }
-        Err(e) => println!("  Error: {}", e),
+        Err(e) => println!("  Error: {e}"),
     }
 }

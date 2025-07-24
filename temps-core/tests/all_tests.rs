@@ -112,12 +112,12 @@ fn test_english_one_variations() {
 
     for input in test_cases {
         let result = parse(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let expr = result.unwrap();
         if let TimeExpression::Relative(rel) = expr {
-            assert_eq!(rel.amount, 1, "Expected amount 1 for: {}", input);
+            assert_eq!(rel.amount, 1, "Expected amount 1 for: {input}");
         } else {
-            panic!("Expected relative time expression for: {}", input);
+            panic!("Expected relative time expression for: {input}");
         }
     }
 }
@@ -136,14 +136,14 @@ fn test_german_one_variations() {
 
     for (input, expected_unit) in test_cases {
         let result = parse(input, Language::German);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let expr = result.unwrap();
         if let TimeExpression::Relative(rel) = expr {
-            assert_eq!(rel.amount, 1, "Expected amount 1 for: {}", input);
-            assert_eq!(rel.unit, expected_unit, "Wrong unit for: {}", input);
+            assert_eq!(rel.amount, 1, "Expected amount 1 for: {input}");
+            assert_eq!(rel.unit, expected_unit, "Wrong unit for: {input}");
             assert_eq!(rel.direction, Direction::Past);
         } else {
-            panic!("Expected relative time expression for: {}", input);
+            panic!("Expected relative time expression for: {input}");
         }
     }
 }
@@ -159,7 +159,7 @@ fn test_mixed_case() {
 
     for (input, lang) in test_cases {
         let result = parse(input, lang);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let expr = result.unwrap();
         assert_eq!(expr, TimeExpression::Now);
     }
@@ -366,9 +366,9 @@ fn test_parsing_english_expressions() {
 
     for (input, expected) in test_cases {
         let result = parse(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
-        assert_eq!(parsed, expected, "Mismatch for input: {}", input);
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
     }
 }
 
@@ -421,9 +421,9 @@ fn test_parsing_german_expressions() {
 
     for (input, expected) in test_cases {
         let result = parse(input, Language::German);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
-        assert_eq!(parsed, expected, "Mismatch for input: {}", input);
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
     }
 }
 
@@ -433,19 +433,18 @@ fn test_articles_parsing() {
     let articles = vec!["a", "an", "one"];
 
     for article in articles {
-        let input = format!("in {} hour", article);
+        let input = format!("in {article} hour");
         let result = parse(&input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
 
         let expr = result.unwrap();
         if let TimeExpression::Relative(rel) = expr {
             assert_eq!(
                 rel.amount, 1,
-                "Article '{}' should parse to amount 1",
-                article
+                "Article '{article}' should parse to amount 1"
             );
         } else {
-            panic!("Expected relative time expression for: {}", input);
+            panic!("Expected relative time expression for: {input}");
         }
     }
 }
@@ -472,8 +471,7 @@ fn test_iso_datetime_parsing() {
         let result = parse(input, Language::English);
         assert!(
             result.is_ok(),
-            "Failed to parse '{}' with English parser",
-            input
+            "Failed to parse '{input}' with English parser"
         );
         let expr = result.unwrap();
 
@@ -543,18 +541,17 @@ fn test_iso_datetime_parsing() {
                     assert_eq!(abs.nanosecond, Some(123000000)); // .123 seconds = 123 million nanoseconds
                     assert_eq!(abs.timezone, Some(crate::Timezone::Utc));
                 }
-                _ => panic!("Unhandled test case: {}", input),
+                _ => panic!("Unhandled test case: {input}"),
             }
         } else {
-            panic!("Expected absolute time expression for: {}", input);
+            panic!("Expected absolute time expression for: {input}");
         }
 
         // Test German parser
         let result = parse(input, Language::German);
         assert!(
             result.is_ok(),
-            "Failed to parse '{}' with German parser",
-            input
+            "Failed to parse '{input}' with German parser"
         );
         let expr = result.unwrap();
 
@@ -624,10 +621,10 @@ fn test_iso_datetime_parsing() {
                     assert_eq!(abs.nanosecond, Some(123000000)); // .123 seconds = 123 million nanoseconds
                     assert_eq!(abs.timezone, Some(crate::Timezone::Utc));
                 }
-                _ => panic!("Unhandled test case: {}", input),
+                _ => panic!("Unhandled test case: {input}"),
             }
         } else {
-            panic!("Expected absolute time expression for: {}", input);
+            panic!("Expected absolute time expression for: {input}");
         }
     }
 }
@@ -644,14 +641,14 @@ fn test_german_articles_parsing() {
 
     for (input, expected_unit) in test_cases {
         let result = parse(input, Language::German);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
 
         let expr = result.unwrap();
         if let TimeExpression::Relative(rel) = expr {
             assert_eq!(rel.amount, 1, "German article should parse to amount 1");
-            assert_eq!(rel.unit, expected_unit, "Unexpected unit for: {}", input);
+            assert_eq!(rel.unit, expected_unit, "Unexpected unit for: {input}");
         } else {
-            panic!("Expected relative time expression for: {}", input);
+            panic!("Expected relative time expression for: {input}");
         }
     }
 }
@@ -777,12 +774,12 @@ fn test_time_parsing_english() {
 
     for (input, expected_time) in test_cases {
         let result = parse(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
         if let TimeExpression::Time(time) = parsed {
-            assert_eq!(time, expected_time, "Mismatch for input: {}", input);
+            assert_eq!(time, expected_time, "Mismatch for input: {input}");
         } else {
-            panic!("Expected Time expression for: {}", input);
+            panic!("Expected Time expression for: {input}");
         }
     }
 }
@@ -799,12 +796,11 @@ fn test_day_at_time_english() {
 
     for input in test_cases {
         let result = parse(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
         assert!(
             matches!(parsed, TimeExpression::DayTime(_)),
-            "Expected DayTime expression for: {}",
-            input
+            "Expected DayTime expression for: {input}"
         );
     }
 }
@@ -840,12 +836,12 @@ fn test_date_format_parsing() {
 
     for (input, expected_date) in test_cases {
         let result = parse(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
         if let TimeExpression::Date(date) = parsed {
-            assert_eq!(date, expected_date, "Mismatch for input: {}", input);
+            assert_eq!(date, expected_date, "Mismatch for input: {input}");
         } else {
-            panic!("Expected Date expression for: {}", input);
+            panic!("Expected Date expression for: {input}");
         }
     }
 }
@@ -884,12 +880,12 @@ fn test_time_parsing_german() {
 
     for (input, expected_time) in test_cases {
         let result = parse(input, Language::German);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
         if let TimeExpression::Time(time) = parsed {
-            assert_eq!(time, expected_time, "Mismatch for input: {}", input);
+            assert_eq!(time, expected_time, "Mismatch for input: {input}");
         } else {
-            panic!("Expected Time expression for: {}", input);
+            panic!("Expected Time expression for: {input}");
         }
     }
 }
@@ -905,12 +901,11 @@ fn test_day_at_time_german() {
 
     for input in test_cases {
         let result = parse(input, Language::German);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
         assert!(
             matches!(parsed, TimeExpression::DayTime(_)),
-            "Expected DayTime expression for: {}",
-            input
+            "Expected DayTime expression for: {input}"
         );
     }
 }
@@ -946,12 +941,12 @@ fn test_date_format_parsing_german() {
 
     for (input, expected_date) in test_cases {
         let result = parse(input, Language::German);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
         if let TimeExpression::Date(date) = parsed {
-            assert_eq!(date, expected_date, "Mismatch for input: {}", input);
+            assert_eq!(date, expected_date, "Mismatch for input: {input}");
         } else {
-            panic!("Expected Date expression for: {}", input);
+            panic!("Expected Date expression for: {input}");
         }
     }
 }
@@ -969,9 +964,9 @@ fn test_day_shortcuts_english() {
 
     for (input, expected) in test_cases {
         let result = parse(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
-        assert_eq!(parsed, expected, "Mismatch for input: {}", input);
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
     }
 }
 
@@ -988,9 +983,9 @@ fn test_day_shortcuts_german() {
 
     for (input, expected) in test_cases {
         let result = parse(input, Language::German);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
-        assert_eq!(parsed, expected, "Mismatch for input: {}", input);
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
     }
 }
 
@@ -1100,9 +1095,9 @@ fn test_weekday_parsing_english() {
 
     for (input, expected) in test_cases {
         let result = parse(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
-        assert_eq!(parsed, expected, "Mismatch for input: {}", input);
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
     }
 }
 
@@ -1141,9 +1136,9 @@ fn test_weekday_modifiers_english() {
 
     for (input, expected) in test_cases {
         let result = parse(input, Language::English);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
-        assert_eq!(parsed, expected, "Mismatch for input: {}", input);
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
     }
 }
 
@@ -1253,9 +1248,9 @@ fn test_weekday_parsing_german() {
 
     for (input, expected) in test_cases {
         let result = parse(input, Language::German);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
-        assert_eq!(parsed, expected, "Mismatch for input: {}", input);
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
     }
 }
 
@@ -1280,8 +1275,8 @@ fn test_weekday_modifiers_german() {
 
     for (input, expected) in test_cases {
         let result = parse(input, Language::German);
-        assert!(result.is_ok(), "Failed to parse: {}", input);
+        assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
-        assert_eq!(parsed, expected, "Mismatch for input: {}", input);
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
     }
 }

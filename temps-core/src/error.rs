@@ -326,7 +326,7 @@ pub trait ParseErrorExt {
 impl ParseErrorExt for winnow::error::ParseError<&str, winnow::error::ContextError> {
     fn to_temps_error(self, input: &str) -> TempsError {
         let position = self.offset();
-        let message = format!("Parser error: {}", self);
+        let message = format!("Parser error: {self}");
         TempsError::parse_error_with_position(message, input, position)
     }
 }

@@ -26,7 +26,7 @@ fn main() {
     for expr in examples {
         match parse_to_datetime(expr, Language::English) {
             Ok(dt) => println!("  '{}' => {}", expr, dt.format("%Y-%m-%d %H:%M:%S %Z")),
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -44,7 +44,7 @@ fn main() {
     for expr in past_examples {
         match parse_to_datetime(expr, Language::English) {
             Ok(dt) => println!("  '{}' => {}", expr, dt.format("%Y-%m-%d %H:%M:%S %Z")),
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -63,11 +63,11 @@ fn main() {
     for expr in absolute_examples {
         match parse_to_datetime(expr, Language::English) {
             Ok(dt) => {
-                println!("  '{}' =>", expr);
+                println!("  '{expr}' =>");
                 println!("    Formatted: {}", dt.format("%Y-%m-%d %H:%M:%S%.9f %Z"));
                 println!("    Unix timestamp: {}", dt.timestamp());
             }
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -94,7 +94,7 @@ fn main() {
                     dt.format("%A")
                 );
             }
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -109,7 +109,7 @@ fn main() {
             Ok(dt) => {
                 println!("  '{}' => Today at {}", expr, dt.format("%H:%M:%S"));
             }
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -128,7 +128,7 @@ fn main() {
             Ok(dt) => {
                 println!("  '{}' => {}", expr, dt.format("%Y-%m-%d %H:%M:%S (%A)"));
             }
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -143,7 +143,7 @@ fn main() {
             Ok(dt) => {
                 println!("  '{}' => {}", expr, dt.format("%Y-%m-%d"));
             }
-            Err(e) => println!("  '{}' => Error: {}", expr, e),
+            Err(e) => println!("  '{expr}' => Error: {e}"),
         }
     }
 
@@ -167,7 +167,7 @@ fn main() {
             println!("  30 days from now: {}", dt.format("%Y-%m-%d %H:%M:%S"));
             println!("  That's a {}", dt.format("%A"));
         }
-        Err(e) => println!("  Error: {}", e),
+        Err(e) => println!("  Error: {e}"),
     }
 
     // Example 8: Working with different languages
@@ -190,7 +190,7 @@ fn main() {
                 english,
                 dt.format("%Y-%m-%d %H:%M:%S")
             ),
-            Err(e) => println!("    '{}' => Error: {}", german, e),
+            Err(e) => println!("    '{german}' => Error: {e}"),
         }
     }
 
@@ -206,8 +206,8 @@ fn main() {
 
     for expr in invalid_examples {
         match parse_to_datetime(expr, Language::English) {
-            Ok(_) => println!("  '{}' => Unexpectedly succeeded!", expr),
-            Err(e) => println!("  '{}' => Error (expected): {}", expr, e),
+            Ok(_) => println!("  '{expr}' => Unexpectedly succeeded!"),
+            Err(e) => println!("  '{expr}' => Error (expected): {e}"),
         }
     }
 
@@ -245,10 +245,10 @@ fn main() {
                 } else if hours > 0 {
                     println!("      (in {} hours, {} minutes)", hours, minutes.abs());
                 } else {
-                    println!("      (in {} minutes)", minutes);
+                    println!("      (in {minutes} minutes)");
                 }
             }
-            Err(e) => println!("    • {} - Error: {}", task, e),
+            Err(e) => println!("    • {task} - Error: {e}"),
         }
     }
 }
