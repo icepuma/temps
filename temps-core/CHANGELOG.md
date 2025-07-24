@@ -7,13 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.0](https://github.com/korora-tech/temps/compare/temps-core-v1.1.0...temps-core-v2.0.0) - 2025-06-17
+## [2.0.0](https://github.com/icepuma/temps/compare/temps-core-v1.1.0...temps-core-v2.0.0) - 2025-06-17
 
 ### Added
 
 - implement comprehensive error handling and API documentation
 
-## [1.0.0](https://github.com/korora-tech/temps/releases/tag/temps-core-v1.0.0) - 2025-05-30
+## [1.0.0](https://github.com/icepuma/temps/releases/tag/temps-core-v1.0.0) - 2025-05-30
 
 ### Added
 
