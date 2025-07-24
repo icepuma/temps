@@ -160,7 +160,7 @@ impl TimeParser for JiffProvider {
                             .map(|z| z.with_time_zone(TimeZone::system()))
                             .map_err(|e| {
                                 TempsError::backend_error(
-                                    format!("Timezone conversion error: {}", e),
+                                    format!("Timezone conversion error: {e}"),
                                     "jiff",
                                 )
                             }),
@@ -175,7 +175,7 @@ impl TimeParser for JiffProvider {
                                 .map(|z| z.with_time_zone(TimeZone::system()))
                                 .map_err(|e| {
                                     TempsError::backend_error(
-                                        format!("Timezone conversion error: {}", e),
+                                        format!("Timezone conversion error: {e}"),
                                         "jiff",
                                     )
                                 })
@@ -184,7 +184,7 @@ impl TimeParser for JiffProvider {
                             // No timezone specified, treat as system timezone
                             datetime.to_zoned(TimeZone::system()).map_err(|e| {
                                 TempsError::backend_error(
-                                    format!("Timezone conversion error: {}", e),
+                                    format!("Timezone conversion error: {e}"),
                                     "jiff",
                                 )
                             })
@@ -194,10 +194,7 @@ impl TimeParser for JiffProvider {
                     // Date only, set time to midnight
                     let datetime = date.at(0, 0, 0, 0);
                     datetime.to_zoned(TimeZone::system()).map_err(|e| {
-                        TempsError::backend_error(
-                            format!("Timezone conversion error: {}", e),
-                            "jiff",
-                        )
+                        TempsError::backend_error(format!("Timezone conversion error: {e}"), "jiff")
                     })
                 }
             }
@@ -299,7 +296,7 @@ impl TimeParser for JiffProvider {
                 date.at(hour as i8, time.minute as i8, time.second as i8, 0)
                     .to_zoned(now.time_zone().clone())
                     .map_err(|e| {
-                        TempsError::backend_error(format!("Failed to create time: {}", e), "jiff")
+                        TempsError::backend_error(format!("Failed to create time: {e}"), "jiff")
                     })
             }
             TimeExpression::DayTime(day_time) => {
@@ -328,7 +325,7 @@ impl TimeParser for JiffProvider {
                 )
                 .to_zoned(day_result.time_zone().clone())
                 .map_err(|e| {
-                    TempsError::backend_error(format!("Failed to create day time: {}", e), "jiff")
+                    TempsError::backend_error(format!("Failed to create day time: {e}"), "jiff")
                 })
             }
             TimeExpression::Date(date) => {
@@ -341,7 +338,7 @@ impl TimeParser for JiffProvider {
                     .at(0, 0, 0, 0)
                     .to_zoned(jiff::tz::TimeZone::system())
                     .map_err(|e| {
-                        TempsError::backend_error(format!("Failed to create date: {}", e), "jiff")
+                        TempsError::backend_error(format!("Failed to create date: {e}"), "jiff")
                     })
             }
         }
