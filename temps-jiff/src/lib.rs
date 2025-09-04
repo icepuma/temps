@@ -138,10 +138,10 @@ impl TimeParser for JiffProvider {
                         ));
                     }
                     // Validate second is in valid range (0-59)
-                    if let Some(second) = abs.second {
-                        if second > 59 {
-                            return Err(TempsError::invalid_time(hour, minute, second));
-                        }
+                    if let Some(second) = abs.second
+                        && second > 59
+                    {
+                        return Err(TempsError::invalid_time(hour, minute, second));
                     }
 
                     let time = Time::new(
