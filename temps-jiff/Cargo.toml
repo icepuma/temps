@@ -13,5 +13,5 @@ temps-core = { path = "../temps-core", version = "2.0.1" }
 jiff = "0.2.15"
 
 [dev-dependencies]
-mockall = "0.13.1"
+mockall = "0.14.0"
 temps-testhelpers = { path = "../temps-testhelpers", features = ["jiff"] }
