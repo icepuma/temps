@@ -29,5 +29,5 @@ temps-chrono = { path = "../temps-chrono", version = "2.0.1", optional = true }
 temps-jiff = { path = "../temps-jiff", version = "2.0.1", optional = true }
 
 [dev-dependencies]
-chrono = "0.4.41"
-jiff = "0.2.15"
+chrono = "0.4.42"
+jiff = "0.2.16"
