@@ -9,7 +9,7 @@ readme = "../README.md"
 license.workspace = true
 
 [dependencies]
-temps-core = { path = "../temps-core", version = "2.0.1" }
+temps-core = { path = "../temps-core", version = "2.0.2" }
 chrono = "0.4.42"
 
 [dev-dependencies]
