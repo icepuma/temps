@@ -9,6 +9,7 @@ use crate::{
     Time, TimeExpression, TimeUnit, Weekday, WeekdayModifier, common, error::ParseErrorExt,
 };
 
+/// Parser for English natural language time expressions.
 pub struct EnglishParser;
 
 impl EnglishParser {

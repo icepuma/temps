@@ -10,7 +10,7 @@ license.workspace = true
 
 [dependencies]
 winnow = "0.7.14"
-thiserror = "2.0.17"
+thiserror = "2.0.18"
 
 [dev-dependencies]
 mockall = "0.14.0"

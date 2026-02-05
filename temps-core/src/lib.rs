@@ -75,7 +75,7 @@ pub use error::{Result, TempsError};
 /// // "3:30 pm" -> TimeExpression::Time(...)
 /// // "tomorrow at 3:30 pm" -> TimeExpression::DayTime(...)
 /// ```
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum TimeExpression {
     /// The current moment in time (e.g., "now", "jetzt")
     Now,
@@ -114,7 +114,7 @@ pub enum TimeExpression {
 ///     direction: Direction::Past,
 /// };
 /// ```
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct RelativeTime {
     /// The numeric amount (e.g., 5 in "5 minutes")
     pub amount: i64,
@@ -158,7 +158,7 @@ pub struct RelativeTime {
 ///     timezone: Some(Timezone::Utc),
 /// };
 /// ```
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct AbsoluteTime {
     /// The year (e.g., 2024)
     pub year: u16,
@@ -194,7 +194,7 @@ pub struct AbsoluteTime {
 /// // Negative offset ("-05:30")
 /// let negative = Timezone::Offset { hours: -5, minutes: 30 };
 /// ```
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Timezone {
     /// UTC timezone (represented as "Z" in ISO format)
     Utc,
@@ -229,7 +229,7 @@ pub enum Timezone {
 ///     modifier: None,
 /// };
 /// ```
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum DayReference {
     /// Today's date
     Today,
@@ -271,7 +271,7 @@ pub enum DayReference {
 ///     meridiem: None,
 /// };
 /// ```
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Time {
     /// Hour (0-23 for 24-hour format, 1-12 for 12-hour format)
     pub hour: u8,
@@ -299,7 +299,7 @@ pub struct Time {
 ///     year: 2024,
 /// };
 /// ```
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct StandardDate {
     /// Day of month (1-31)
     pub day: u8,
@@ -329,7 +329,7 @@ pub struct StandardDate {
 ///     },
 /// };
 /// ```
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct DayTime {
     /// The day reference
     pub day: DayReference,
@@ -348,7 +348,7 @@ pub struct DayTime {
 /// // "5 seconds", "10 minutes", "2 hours", "3 days",
 /// // "1 week", "6 months", "2 years"
 /// ```
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum TimeUnit {
     Second,
     Minute,
@@ -369,7 +369,7 @@ pub enum TimeUnit {
 /// // "5 minutes ago" -> Direction::Past
 /// // "in 5 minutes" -> Direction::Future
 /// ```
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Direction {
     Past,
     Future,
@@ -378,7 +378,7 @@ pub enum Direction {
 /// Days of the week.
 ///
 /// Used in expressions like "next Monday" or "last Friday".
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Weekday {
     Monday,
     Tuesday,
@@ -400,14 +400,14 @@ pub enum Weekday {
 /// // "next Friday" -> WeekdayModifier::Next
 /// // "Monday" (no modifier) -> finds the next occurrence
 /// ```
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum WeekdayModifier {
     Last,
     Next,
 }
 
 /// AM/PM indicator for 12-hour time format.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Meridiem {
     AM,
     PM,
@@ -426,7 +426,7 @@ pub enum Meridiem {
 /// // Parse German
 /// let expr = parse("in 5 Minuten", Language::German);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Language {
     English,
     German,
@@ -565,16 +565,19 @@ pub mod errors {
     pub const ERR_TIMEZONE_CONVERSION: &str = "Timezone conversion error";
 
     /// Format error message for invalid date with components
+    #[must_use]
     pub fn format_invalid_date(year: u16, month: u8, day: u8) -> String {
         format!("Invalid date: {year}-{month}-{day}")
     }
 
     /// Format error message for invalid time with components
+    #[must_use]
     pub fn format_invalid_time(hour: u8, minute: u8, second: u8) -> String {
         format!("Invalid time: {hour}:{minute}:{second}")
     }
 
     /// Format error message for invalid timezone offset
+    #[must_use]
     pub fn format_invalid_timezone_offset(hours: i8, minutes: u8) -> String {
         format!("Invalid timezone offset: {hours}:{minutes}")
     }
@@ -601,6 +604,7 @@ pub mod time_utils {
     /// assert_eq!(convert_12_to_24_hour(3, Some(&Meridiem::PM)), 15);  // 3 PM -> 15
     /// assert_eq!(convert_12_to_24_hour(14, None), 14);                // 24-hour format
     /// ```
+    #[must_use]
     pub fn convert_12_to_24_hour(hour: u8, meridiem: Option<&Meridiem>) -> u8 {
         match meridiem {
             Some(Meridiem::AM) => {
@@ -624,6 +628,7 @@ pub mod time_utils {
     /// Calculate total seconds for a timezone offset
     ///
     /// Uses saturating arithmetic to prevent overflow
+    #[must_use]
     pub fn calculate_timezone_offset_seconds(hours: i8, minutes: u8) -> i32 {
         let hour_seconds = (hours as i32).saturating_mul(SECONDS_PER_HOUR);
         let minute_seconds = (minutes as i32).saturating_mul(SECONDS_PER_MINUTE);
@@ -638,6 +643,7 @@ pub mod time_utils {
     /// * `current_day_offset` - Current weekday as offset from Monday (0-6)
     /// * `target_day_offset` - Target weekday as offset from Monday (0-6)
     /// * `modifier` - Whether to get next, last, or closest occurrence
+    #[must_use]
     pub fn calculate_weekday_offset(
         current_day_offset: i64,
         target_day_offset: i64,

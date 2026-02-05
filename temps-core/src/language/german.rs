@@ -10,6 +10,11 @@ use crate::{
     TimeExpression, TimeUnit, Weekday, WeekdayModifier, common, error::ParseErrorExt,
 };
 
+/// Parser for German natural language time expressions.
+///
+/// German nouns (e.g., "Sekunden", "Minuten") are matched case-sensitively
+/// to follow German orthographic rules, while abbreviations (e.g., "sek", "min")
+/// are matched case-insensitively for convenience.
 pub struct GermanParser;
 
 impl GermanParser {

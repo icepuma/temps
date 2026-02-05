@@ -31,7 +31,7 @@ use thiserror::Error;
 ///
 /// This enum represents all possible errors that can occur during
 /// parsing and time calculation operations.
-#[derive(Error, Debug, Clone, PartialEq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TempsError {
     /// Error that occurs during parsing of time expressions.
     ///
@@ -159,6 +159,7 @@ impl TempsError {
     ///     "in 5"
     /// );
     /// ```
+    #[must_use]
     pub fn parse_error(message: impl Into<String>, input: impl Into<String>) -> Self {
         Self::ParseError {
             message: message.into(),
@@ -188,6 +189,7 @@ impl TempsError {
     ///     9  // Points to the 't' in "minuts"
     /// );
     /// ```
+    #[must_use]
     pub fn parse_error_with_position(
         message: impl Into<String>,
         input: impl Into<String>,
@@ -213,6 +215,7 @@ impl TempsError {
     ///     "Cannot subtract 13 months from January"
     /// );
     /// ```
+    #[must_use]
     pub fn date_calculation(message: impl Into<String>) -> Self {
         Self::DateCalculationError {
             message: message.into(),
@@ -235,6 +238,7 @@ impl TempsError {
     ///     "chronos error: date out of range"
     /// );
     /// ```
+    #[must_use]
     pub fn date_calculation_with_source(
         message: impl Into<String>,
         context: impl Into<String>,
@@ -246,11 +250,13 @@ impl TempsError {
     }
 
     /// Creates an invalid date error
+    #[must_use]
     pub fn invalid_date(year: u16, month: u8, day: u8) -> Self {
         Self::InvalidDate { year, month, day }
     }
 
     /// Creates an invalid time error
+    #[must_use]
     pub fn invalid_time(hour: u8, minute: u8, second: u8) -> Self {
         Self::InvalidTime {
             hour,
@@ -260,11 +266,13 @@ impl TempsError {
     }
 
     /// Creates an invalid timezone offset error
+    #[must_use]
     pub fn invalid_timezone_offset(hours: i8, minutes: u8) -> Self {
         Self::InvalidTimezoneOffset { hours, minutes }
     }
 
     /// Creates an ambiguous time error
+    #[must_use]
     pub fn ambiguous_time(message: impl Into<String>) -> Self {
         Self::AmbiguousTime {
             message: message.into(),
@@ -272,6 +280,7 @@ impl TempsError {
     }
 
     /// Creates an arithmetic overflow error
+    #[must_use]
     pub fn arithmetic_overflow(operation: impl Into<String>) -> Self {
         Self::ArithmeticOverflow {
             operation: operation.into(),
@@ -279,6 +288,7 @@ impl TempsError {
     }
 
     /// Creates an unsupported operation error
+    #[must_use]
     pub fn unsupported_operation(operation: impl Into<String>) -> Self {
         Self::UnsupportedOperation {
             operation: operation.into(),
@@ -286,6 +296,7 @@ impl TempsError {
     }
 
     /// Creates a backend error
+    #[must_use]
     pub fn backend_error(message: impl Into<String>, backend: impl Into<String>) -> Self {
         Self::BackendError {
             message: message.into(),

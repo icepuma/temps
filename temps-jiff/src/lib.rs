@@ -51,6 +51,7 @@ use jiff::{Span, Zoned};
 use temps_core::{
     DayReference, Direction, Language, Result, TempsError, TimeExpression, TimeParser, TimeUnit,
     Weekday,
+    errors::*,
     time_utils::{
         calculate_timezone_offset_seconds, calculate_weekday_offset, convert_12_to_24_hour,
     },
@@ -100,16 +101,10 @@ impl TimeParser for JiffProvider {
                 // Apply the span in the correct direction
                 match rel.direction {
                     Direction::Past => now.checked_sub(span).map_err(|e| {
-                        TempsError::date_calculation_with_source(
-                            "Date calculation error",
-                            e.to_string(),
-                        )
+                        TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
                     }),
                     Direction::Future => now.checked_add(span).map_err(|e| {
-                        TempsError::date_calculation_with_source(
-                            "Date calculation error",
-                            e.to_string(),
-                        )
+                        TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
                     }),
                 }
             }
@@ -160,7 +155,7 @@ impl TimeParser for JiffProvider {
                             .map(|z| z.with_time_zone(TimeZone::system()))
                             .map_err(|e| {
                                 TempsError::backend_error(
-                                    format!("Timezone conversion error: {e}"),
+                                    format!("{ERR_TIMEZONE_CONVERSION}: {e}"),
                                     "jiff",
                                 )
                             }),
@@ -175,7 +170,7 @@ impl TimeParser for JiffProvider {
                                 .map(|z| z.with_time_zone(TimeZone::system()))
                                 .map_err(|e| {
                                     TempsError::backend_error(
-                                        format!("Timezone conversion error: {e}"),
+                                        format!("{ERR_TIMEZONE_CONVERSION}: {e}"),
                                         "jiff",
                                     )
                                 })
@@ -184,7 +179,7 @@ impl TimeParser for JiffProvider {
                             // No timezone specified, treat as system timezone
                             datetime.to_zoned(TimeZone::system()).map_err(|e| {
                                 TempsError::backend_error(
-                                    format!("Timezone conversion error: {e}"),
+                                    format!("{ERR_TIMEZONE_CONVERSION}: {e}"),
                                     "jiff",
                                 )
                             })
@@ -194,7 +189,7 @@ impl TimeParser for JiffProvider {
                     // Date only, set time to midnight
                     let datetime = date.at(0, 0, 0, 0);
                     datetime.to_zoned(TimeZone::system()).map_err(|e| {
-                        TempsError::backend_error(format!("Timezone conversion error: {e}"), "jiff")
+                        TempsError::backend_error(format!("{ERR_TIMEZONE_CONVERSION}: {e}"), "jiff")
                     })
                 }
             }
@@ -301,8 +296,7 @@ impl TimeParser for JiffProvider {
             }
             TimeExpression::DayTime(day_time) => {
                 // First get the day
-                let day_result =
-                    self.parse_expression(TimeExpression::Day(day_time.day.clone()))?;
+                let day_result = self.parse_expression(TimeExpression::Day(day_time.day))?;
                 let date = day_result.date();
 
                 let hour =

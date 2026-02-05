@@ -52,6 +52,7 @@ use temps_core::{
     DayReference, Direction, Language, Result, TempsError, TimeExpression, TimeParser, TimeUnit,
     Weekday,
     constants::MONTHS_PER_YEAR,
+    errors::*,
     time_utils::{
         calculate_timezone_offset_seconds, calculate_weekday_offset, convert_12_to_24_hour,
     },
@@ -90,21 +91,19 @@ impl TimeParser for ChronoProvider {
                 // Handle months and years separately for proper date arithmetic
                 match rel.unit {
                     TimeUnit::Month => {
-                        let months = Months::new(rel.amount.try_into().map_err(|_| {
-                            TempsError::date_calculation("Month amount must be a positive number")
-                        })?);
+                        let months = Months::new(
+                            rel.amount
+                                .try_into()
+                                .map_err(|_| TempsError::date_calculation(ERR_MONTH_POSITIVE))?,
+                        );
 
                         match rel.direction {
-                            Direction::Past => now.checked_sub_months(months).ok_or_else(|| {
-                                TempsError::date_calculation(
-                                    "Date calculation resulted in invalid date",
-                                )
-                            }),
-                            Direction::Future => now.checked_add_months(months).ok_or_else(|| {
-                                TempsError::date_calculation(
-                                    "Date calculation resulted in invalid date",
-                                )
-                            }),
+                            Direction::Past => now
+                                .checked_sub_months(months)
+                                .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID)),
+                            Direction::Future => now
+                                .checked_add_months(months)
+                                .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID)),
                         }
                     }
                     TimeUnit::Year => {
@@ -112,24 +111,20 @@ impl TimeParser for ChronoProvider {
                         let months_count = rel
                             .amount
                             .checked_mul(MONTHS_PER_YEAR as i64)
-                            .ok_or_else(|| {
-                                TempsError::arithmetic_overflow("Year calculation overflow")
-                            })?;
-                        let months = Months::new(months_count.try_into().map_err(|_| {
-                            TempsError::date_calculation("Year amount must be a positive number")
-                        })?);
+                            .ok_or_else(|| TempsError::arithmetic_overflow(ERR_YEAR_OVERFLOW))?;
+                        let months = Months::new(
+                            months_count
+                                .try_into()
+                                .map_err(|_| TempsError::date_calculation(ERR_YEAR_POSITIVE))?,
+                        );
 
                         match rel.direction {
-                            Direction::Past => now.checked_sub_months(months).ok_or_else(|| {
-                                TempsError::date_calculation(
-                                    "Date calculation resulted in invalid date",
-                                )
-                            }),
-                            Direction::Future => now.checked_add_months(months).ok_or_else(|| {
-                                TempsError::date_calculation(
-                                    "Date calculation resulted in invalid date",
-                                )
-                            }),
+                            Direction::Past => now
+                                .checked_sub_months(months)
+                                .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID)),
+                            Direction::Future => now
+                                .checked_add_months(months)
+                                .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID)),
                         }
                     }
                     _ => {
@@ -184,9 +179,7 @@ impl TimeParser for ChronoProvider {
                             offset
                                 .from_local_datetime(&naive_dt)
                                 .single()
-                                .ok_or_else(|| {
-                                    TempsError::ambiguous_time("Ambiguous or invalid local time")
-                                })?
+                                .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))?
                                 .with_timezone(&Local)
                         }
                         None => {
@@ -194,22 +187,18 @@ impl TimeParser for ChronoProvider {
                             Local
                                 .from_local_datetime(&naive_dt)
                                 .single()
-                                .ok_or_else(|| {
-                                    TempsError::ambiguous_time("Ambiguous or invalid local time")
-                                })?
+                                .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))?
                         }
                     }
                 } else {
                     // Date only, set time to midnight
-                    let midnight = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-                        TempsError::date_calculation("Failed to create midnight time")
-                    })?;
+                    let midnight = date
+                        .and_hms_opt(0, 0, 0)
+                        .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
                     Local
                         .from_local_datetime(&midnight)
                         .single()
-                        .ok_or_else(|| {
-                            TempsError::ambiguous_time("Ambiguous or invalid local time")
-                        })?
+                        .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))?
                 };
 
                 Ok(datetime)
@@ -218,32 +207,36 @@ impl TimeParser for ChronoProvider {
                 let now = self.now();
                 match day_ref {
                     DayReference::Today => {
-                        let midnight = now.date_naive().and_hms_opt(0, 0, 0).ok_or_else(|| {
-                            TempsError::date_calculation("Failed to create midnight time")
-                        })?;
-                        midnight.and_local_timezone(Local).single().ok_or_else(|| {
-                            TempsError::ambiguous_time("Ambiguous or invalid local time")
-                        })
+                        let midnight = now
+                            .date_naive()
+                            .and_hms_opt(0, 0, 0)
+                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
+                        midnight
+                            .and_local_timezone(Local)
+                            .single()
+                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::Yesterday => {
                         let yesterday = now - Duration::days(1);
-                        let midnight =
-                            yesterday.date_naive().and_hms_opt(0, 0, 0).ok_or_else(|| {
-                                TempsError::date_calculation("Failed to create midnight time")
-                            })?;
-                        midnight.and_local_timezone(Local).single().ok_or_else(|| {
-                            TempsError::ambiguous_time("Ambiguous or invalid local time")
-                        })
+                        let midnight = yesterday
+                            .date_naive()
+                            .and_hms_opt(0, 0, 0)
+                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
+                        midnight
+                            .and_local_timezone(Local)
+                            .single()
+                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::Tomorrow => {
                         let tomorrow = now + Duration::days(1);
-                        let midnight =
-                            tomorrow.date_naive().and_hms_opt(0, 0, 0).ok_or_else(|| {
-                                TempsError::date_calculation("Failed to create midnight time")
-                            })?;
-                        midnight.and_local_timezone(Local).single().ok_or_else(|| {
-                            TempsError::ambiguous_time("Ambiguous or invalid local time")
-                        })
+                        let midnight = tomorrow
+                            .date_naive()
+                            .and_hms_opt(0, 0, 0)
+                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
+                        midnight
+                            .and_local_timezone(Local)
+                            .single()
+                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::Weekday { day, modifier } => {
                         let target_weekday = match day {
@@ -264,16 +257,14 @@ impl TimeParser for ChronoProvider {
                             calculate_weekday_offset(current_offset, target_offset, modifier);
                         let target_date = now + Duration::days(days_to_add);
 
-                        let midnight =
-                            target_date
-                                .date_naive()
-                                .and_hms_opt(0, 0, 0)
-                                .ok_or_else(|| {
-                                    TempsError::date_calculation("Failed to create midnight time")
-                                })?;
-                        midnight.and_local_timezone(Local).single().ok_or_else(|| {
-                            TempsError::ambiguous_time("Ambiguous or invalid local time")
-                        })
+                        let midnight = target_date
+                            .date_naive()
+                            .and_hms_opt(0, 0, 0)
+                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
+                        midnight
+                            .and_local_timezone(Local)
+                            .single()
+                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                 }
             }
@@ -291,8 +282,7 @@ impl TimeParser for ChronoProvider {
             }
             TimeExpression::DayTime(day_time) => {
                 // First get the day
-                let day_result =
-                    self.parse_expression(TimeExpression::Day(day_time.day.clone()))?;
+                let day_result = self.parse_expression(TimeExpression::Day(day_time.day))?;
                 let date = day_result.date_naive();
 
                 let hour =
@@ -322,7 +312,7 @@ impl TimeParser for ChronoProvider {
                 NaiveDate::from_ymd_opt(date.year as i32, date.month as u32, date.day as u32)
                     .ok_or_else(|| TempsError::invalid_date(date.year, date.month, date.day))?
                     .and_hms_opt(0, 0, 0)
-                    .ok_or_else(|| TempsError::date_calculation("Failed to create midnight time"))?
+                    .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?
                     .and_local_timezone(Local)
                     .single()
                     .ok_or_else(|| TempsError::ambiguous_time("Ambiguous local time"))

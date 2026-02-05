@@ -109,7 +109,7 @@ fn test_date_arithmetic_consistency() {
     });
 
     let now = provider.now();
-    let forward_result = provider.parse_expression(forward_month.clone());
+    let forward_result = provider.parse_expression(forward_month);
     assert!(forward_result.is_ok());
 
     let backward_result = provider.parse_expression(backward_month);
