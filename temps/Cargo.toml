@@ -24,9 +24,9 @@ path = "../examples/jiff_example.rs"
 required-features = ["jiff"]
 
 [dependencies]
-temps-core = { path = "../temps-core", version = "2.0.2", optional = true }
-temps-chrono = { path = "../temps-chrono", version = "2.0.2", optional = true }
-temps-jiff = { path = "../temps-jiff", version = "2.0.2", optional = true }
+temps-core = { path = "../temps-core", version = "3.0.0", optional = true }
+temps-chrono = { path = "../temps-chrono", version = "3.0.0", optional = true }
+temps-jiff = { path = "../temps-jiff", version = "3.0.0", optional = true }
 
 [dev-dependencies]
 chrono = "0.4.43"

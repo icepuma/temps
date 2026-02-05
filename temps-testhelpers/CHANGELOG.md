@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0](https://github.com/icepuma/temps/compare/temps-testhelpers-v2.0.2...temps-testhelpers-v3.0.0) - 2026-02-05
+
+### Other
+
+- add Copy/Eq/Hash derives, #[must_use], shared error constants, doc comments; update deps
+
 ## [2.0.2](https://github.com/icepuma/temps/compare/temps-testhelpers-v2.0.1...temps-testhelpers-v2.0.2) - 2025-12-02
 
 ### Other
