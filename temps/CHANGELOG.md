@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1](https://github.com/icepuma/temps/compare/temps-v3.0.0...temps-v3.0.1) - 2026-04-26
+
+### Fixed
+
+- *(parser)* validate date and time components
+
+### Other
+
+- *(readme)* fix install and parser examples
+
 ## [3.0.0](https://github.com/icepuma/temps/compare/temps-v2.0.2...temps-v3.0.0) - 2026-02-05
 
 ### Other
