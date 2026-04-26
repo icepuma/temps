@@ -564,6 +564,9 @@ pub mod errors {
     /// Error message for timezone conversion errors
     pub const ERR_TIMEZONE_CONVERSION: &str = "Timezone conversion error";
 
+    /// Error message for negative relative amounts
+    pub const ERR_RELATIVE_AMOUNT_NON_NEGATIVE: &str = "Relative amount must be non-negative";
+
     /// Format error message for invalid date with components
     #[must_use]
     pub fn format_invalid_date(year: u16, month: u8, day: u8) -> String {
@@ -589,7 +592,7 @@ pub mod time_utils {
     //! Time conversion and calculation utilities
 
     use crate::{
-        Meridiem, WeekdayModifier,
+        Meridiem, Timezone, WeekdayModifier,
         constants::{SECONDS_PER_HOUR, SECONDS_PER_MINUTE},
     };
 
@@ -630,9 +633,61 @@ pub mod time_utils {
     /// Uses saturating arithmetic to prevent overflow
     #[must_use]
     pub fn calculate_timezone_offset_seconds(hours: i8, minutes: u8) -> i32 {
-        let hour_seconds = (hours as i32).saturating_mul(SECONDS_PER_HOUR);
-        let minute_seconds = (minutes as i32).saturating_mul(SECONDS_PER_MINUTE);
+        let hour_seconds = i32::from(hours).saturating_mul(SECONDS_PER_HOUR);
+        let minute_seconds = i32::from(minutes).saturating_mul(SECONDS_PER_MINUTE);
+        let minute_seconds = if hours < 0 {
+            -minute_seconds
+        } else {
+            minute_seconds
+        };
+
         hour_seconds.saturating_add(minute_seconds)
+    }
+
+    /// Check whether the date components form a real calendar date.
+    #[must_use]
+    pub fn is_valid_calendar_date(year: u16, month: u8, day: u8) -> bool {
+        let days_in_month = match month {
+            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+            4 | 6 | 9 | 11 => 30,
+            2 if is_leap_year(year) => 29,
+            2 => 28,
+            _ => return false,
+        };
+
+        (1..=days_in_month).contains(&day)
+    }
+
+    /// Check whether the time components form a valid 24-hour clock time.
+    #[must_use]
+    pub fn is_valid_24_hour_time(hour: u8, minute: u8, second: u8) -> bool {
+        hour <= 23 && minute <= 59 && second <= 59
+    }
+
+    /// Check whether time components are valid for either 24-hour or AM/PM notation.
+    #[must_use]
+    pub fn is_valid_time(hour: u8, minute: u8, second: u8, meridiem: Option<Meridiem>) -> bool {
+        match meridiem {
+            Some(_) => (1..=12).contains(&hour) && minute <= 59 && second <= 59,
+            None => is_valid_24_hour_time(hour, minute, second),
+        }
+    }
+
+    /// Check whether a timezone offset is in the supported UTC-12:00..=UTC+14:00 range.
+    #[must_use]
+    pub fn is_valid_timezone_offset(offset: Timezone) -> bool {
+        match offset {
+            Timezone::Utc => true,
+            Timezone::Offset { hours, minutes } => {
+                minutes <= 59
+                    && match hours {
+                        -12 => minutes == 0,
+                        -11..=13 => true,
+                        14 => minutes == 0,
+                        _ => false,
+                    }
+            }
+        }
     }
 
     /// Calculate the day offset for weekday calculations
@@ -678,6 +733,11 @@ pub mod time_utils {
             }
         }
     }
+
+    #[must_use]
+    fn is_leap_year(year: u16) -> bool {
+        year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
+    }
 }
 
 // ===== Common Parsing Module =====
@@ -719,11 +779,17 @@ pub mod common {
     /// ```
     pub fn parse_iso_datetime(input: &mut &str) -> winnow::Result<TimeExpression> {
         // Parse date components
-        let year = parse_four_digit_number.parse_next(input)?;
-        '-'.parse_next(input)?;
-        let month = parse_two_digit_number.parse_next(input)?;
-        '-'.parse_next(input)?;
-        let day = parse_two_digit_number.parse_next(input)?;
+        let (year, month, day) = (
+            parse_four_digit_number,
+            '-',
+            parse_two_digit_number,
+            '-',
+            parse_two_digit_number,
+        )
+            .verify_map(|(year, _, month, _, day)| {
+                time_utils::is_valid_calendar_date(year, month, day).then_some((year, month, day))
+            })
+            .parse_next(input)?;
 
         // Parse optional time components
         let time_part = opt((
@@ -742,17 +808,23 @@ pub mod common {
 
                         // Parse the fraction and multiply by appropriate power of 10
                         let parsed = fraction.parse::<u32>()?;
-                        let multiplier = 10_u32.pow(9 - fraction.len() as u32);
+                        let fraction_len = u32::try_from(fraction.len())
+                            .expect("fraction length is capped at 9 digits");
+                        let multiplier = 10_u32.pow(9 - fraction_len);
                         Ok::<u32, std::num::ParseIntError>(parsed * multiplier)
                     }),
                 )),
             )),
             opt(parse_timezone),
-        ))
+        )
+            .verify_map(|(_, h, _, m, sec_part, tz)| {
+                let second = sec_part.map_or(0, |(_, s, _)| s);
+                time_utils::is_valid_24_hour_time(h, m, second).then_some((h, m, sec_part, tz))
+            }))
         .parse_next(input)?;
 
         let (hour, minute, second, nanosecond, timezone) =
-            if let Some((_, h, _, m, sec_part, tz)) = time_part {
+            if let Some((h, m, sec_part, tz)) = time_part {
                 // We have time components
                 let hour = Some(h);
                 let minute = Some(m);
@@ -796,20 +868,25 @@ pub mod common {
     ///
     /// Examples: `+02:00`, `-05:30`, `+09`
     fn parse_offset_timezone(input: &mut &str) -> winnow::Result<Timezone> {
-        let sign = one_of(['+', '-']).parse_next(input)?;
-        let hours = parse_two_digit_number.parse_next(input)?;
-        let minutes = opt((':', parse_two_digit_number))
-            .parse_next(input)?
-            .map(|(_, m)| m)
-            .unwrap_or(0);
+        (
+            one_of(['+', '-']),
+            parse_two_digit_number,
+            opt((':', parse_two_digit_number)).map(|minutes| minutes.map_or(0, |(_, m)| m)),
+        )
+            .verify_map(|(sign, hours, minutes)| {
+                let hours = i8::try_from(hours).ok()?;
+                let signed_hours = if sign == '+' { hours } else { -hours };
+                let offset = Timezone::Offset {
+                    hours: signed_hours,
+                    minutes,
+                };
 
-        let hours = if sign == '+' {
-            hours as i8
-        } else {
-            -(hours as i8)
-        };
+                let can_represent_offset = !(sign == '-' && hours == 0 && minutes > 0);
 
-        Ok(Timezone::Offset { hours, minutes })
+                (can_represent_offset && time_utils::is_valid_timezone_offset(offset))
+                    .then_some(offset)
+            })
+            .parse_next(input)
     }
 
     /// Parse a two-digit number as u8.

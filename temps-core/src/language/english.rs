@@ -7,6 +7,7 @@ use winnow::{
 use crate::{
     DayReference, DayTime, Direction, LanguageParser, Meridiem, RelativeTime, Result, StandardDate,
     Time, TimeExpression, TimeUnit, Weekday, WeekdayModifier, common, error::ParseErrorExt,
+    time_utils,
 };
 
 /// Parser for English natural language time expressions.
@@ -20,16 +21,18 @@ impl EnglishParser {
                 Caseless("an").value(1),
                 Caseless("a").value(1),
                 Caseless("one").value(1),
+                Caseless("two").value(2),
+                Caseless("three").value(3),
+                Caseless("four").value(4),
+                Caseless("five").value(5),
             )),
-            Caseless("two").value(2),
-            Caseless("three").value(3),
-            Caseless("four").value(4),
-            Caseless("five").value(5),
-            Caseless("six").value(6),
-            Caseless("seven").value(7),
-            Caseless("eight").value(8),
-            Caseless("nine").value(9),
-            Caseless("ten").value(10),
+            alt((
+                Caseless("six").value(6),
+                Caseless("seven").value(7),
+                Caseless("eight").value(8),
+                Caseless("nine").value(9),
+                Caseless("ten").value(10),
+            )),
         ))
         .parse_next(input)
     }
@@ -226,15 +229,39 @@ impl EnglishParser {
     }
 
     fn parse_time_digits(input: &mut &str) -> winnow::Result<(u8, u8, u8, Option<Meridiem>)> {
-        let hour = common::parse_two_digit_number(input)?;
-        ':'.parse_next(input)?;
-        let minute = common::parse_two_digit_number(input)?;
-        let second = opt(preceded(':', common::parse_two_digit_number))
-            .parse_next(input)?
-            .unwrap_or(0);
-        let meridiem = opt(preceded(multispace1, Self::parse_meridiem)).parse_next(input)?;
+        alt((Self::parse_time_with_minutes, Self::parse_hour_meridiem)).parse_next(input)
+    }
 
-        Ok((hour, minute, second, meridiem))
+    fn parse_time_with_minutes(input: &mut &str) -> winnow::Result<(u8, u8, u8, Option<Meridiem>)> {
+        (
+            common::parse_two_digit_number,
+            ':',
+            common::parse_two_digit_number,
+            opt(preceded(':', common::parse_two_digit_number)).map(|second| second.unwrap_or(0)),
+            opt(preceded(multispace0, Self::parse_meridiem)),
+        )
+            .verify_map(|(hour, _, minute, second, meridiem)| {
+                time_utils::is_valid_time(hour, minute, second, meridiem)
+                    .then_some((hour, minute, second, meridiem))
+            })
+            .parse_next(input)
+    }
+
+    fn parse_hour_meridiem(input: &mut &str) -> winnow::Result<(u8, u8, u8, Option<Meridiem>)> {
+        (
+            common::parse_two_digit_number,
+            multispace0,
+            Self::parse_meridiem,
+        )
+            .verify_map(|(hour, _, meridiem)| {
+                time_utils::is_valid_time(hour, 0, 0, Some(meridiem)).then_some((
+                    hour,
+                    0,
+                    0,
+                    Some(meridiem),
+                ))
+            })
+            .parse_next(input)
     }
 
     fn parse_time(input: &mut &str) -> winnow::Result<TimeExpression> {
@@ -289,8 +316,9 @@ impl EnglishParser {
                 '-',
                 common::parse_two_digit_number,
             )
-                .map(|(year, _, month, _, day)| {
-                    TimeExpression::Date(StandardDate { day, month, year })
+                .verify_map(|(year, _, month, _, day)| {
+                    time_utils::is_valid_calendar_date(year, month, day)
+                        .then_some(TimeExpression::Date(StandardDate { day, month, year }))
                 }),
             // DD/MM/YYYY or DD-MM-YYYY (International format)
             (
@@ -300,8 +328,10 @@ impl EnglishParser {
                 alt(('/', '-')),
                 common::parse_four_digit_number,
             )
-                .map(|(day, _, month, _, year)| {
-                    TimeExpression::Date(StandardDate { day, month, year })
+                .verify_map(|(day, first_separator, month, second_separator, year)| {
+                    (first_separator == second_separator
+                        && time_utils::is_valid_calendar_date(year, month, day))
+                    .then_some(TimeExpression::Date(StandardDate { day, month, year }))
                 }),
         ))
         .parse_next(input)

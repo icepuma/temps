@@ -54,6 +54,7 @@ use temps_core::{
     errors::*,
     time_utils::{
         calculate_timezone_offset_seconds, calculate_weekday_offset, convert_12_to_24_hour,
+        is_valid_time, is_valid_timezone_offset,
     },
 };
 
@@ -74,6 +75,29 @@ use temps_core::{
 /// ```
 pub struct JiffProvider;
 
+fn jiff_date_components(year: u16, month: u8, day: u8) -> Result<(i16, i8, i8)> {
+    Ok((
+        i16::try_from(year).map_err(|_| TempsError::invalid_date(year, month, day))?,
+        i8::try_from(month).map_err(|_| TempsError::invalid_date(year, month, day))?,
+        i8::try_from(day).map_err(|_| TempsError::invalid_date(year, month, day))?,
+    ))
+}
+
+fn jiff_time_components(
+    hour: u8,
+    minute: u8,
+    second: u8,
+    nanosecond: u32,
+) -> Result<(i8, i8, i8, i32)> {
+    Ok((
+        i8::try_from(hour).map_err(|_| TempsError::invalid_time(hour, minute, second))?,
+        i8::try_from(minute).map_err(|_| TempsError::invalid_time(hour, minute, second))?,
+        i8::try_from(second).map_err(|_| TempsError::invalid_time(hour, minute, second))?,
+        i32::try_from(nanosecond)
+            .map_err(|_| TempsError::backend_error("Invalid nanosecond component", "jiff"))?,
+    ))
+}
+
 impl TimeParser for JiffProvider {
     type DateTime = Zoned;
 
@@ -85,6 +109,12 @@ impl TimeParser for JiffProvider {
         match expr {
             TimeExpression::Now => Ok(self.now()),
             TimeExpression::Relative(rel) => {
+                if rel.amount < 0 {
+                    return Err(TempsError::date_calculation(
+                        ERR_RELATIVE_AMOUNT_NON_NEGATIVE,
+                    ));
+                }
+
                 let now = self.now();
 
                 // Create a span based on the time unit
@@ -112,7 +142,8 @@ impl TimeParser for JiffProvider {
                 use jiff::civil::{Date, DateTime, Time};
                 use jiff::tz::{Offset, TimeZone};
 
-                let date = Date::new(abs.year as i16, abs.month as i8, abs.day as i8)
+                let (year, month, day) = jiff_date_components(abs.year, abs.month, abs.day)?;
+                let date = Date::new(year, month, day)
                     .map_err(|e| TempsError::backend_error(e.to_string(), "jiff"))?;
 
                 if let (Some(hour), Some(minute)) = (abs.hour, abs.minute) {
@@ -139,13 +170,13 @@ impl TimeParser for JiffProvider {
                         return Err(TempsError::invalid_time(hour, minute, second));
                     }
 
-                    let time = Time::new(
-                        hour as i8,
-                        minute as i8,
-                        abs.second.unwrap_or(0) as i8,
-                        abs.nanosecond.unwrap_or(0) as i32,
-                    )
-                    .map_err(|e| TempsError::backend_error(e.to_string(), "jiff"))?;
+                    let second = abs.second.unwrap_or(0);
+                    let nanosecond = abs.nanosecond.unwrap_or(0);
+                    let (hour, minute, second, nanosecond) =
+                        jiff_time_components(hour, minute, second, nanosecond)?;
+
+                    let time = Time::new(hour, minute, second, nanosecond)
+                        .map_err(|e| TempsError::backend_error(e.to_string(), "jiff"))?;
 
                     let datetime = DateTime::from_parts(date, time);
 
@@ -160,6 +191,13 @@ impl TimeParser for JiffProvider {
                                 )
                             }),
                         Some(temps_core::Timezone::Offset { hours, minutes }) => {
+                            if !is_valid_timezone_offset(temps_core::Timezone::Offset {
+                                hours: *hours,
+                                minutes: *minutes,
+                            }) {
+                                return Err(TempsError::invalid_timezone_offset(*hours, *minutes));
+                            }
+
                             let total_seconds = calculate_timezone_offset_seconds(*hours, *minutes);
                             let offset = Offset::from_seconds(total_seconds).map_err(|_| {
                                 TempsError::invalid_timezone_offset(*hours, *minutes)
@@ -281,14 +319,21 @@ impl TimeParser for JiffProvider {
             TimeExpression::Time(time) => {
                 let now = self.now();
                 let date = now.date();
-                let hour = convert_12_to_24_hour(time.hour, time.meridiem.as_ref());
 
-                // Validate time components
-                if hour > 23 || time.minute > 59 || time.second > 59 {
-                    return Err(TempsError::invalid_time(hour, time.minute, time.second));
+                if !is_valid_time(time.hour, time.minute, time.second, time.meridiem) {
+                    return Err(TempsError::invalid_time(
+                        time.hour,
+                        time.minute,
+                        time.second,
+                    ));
                 }
 
-                date.at(hour as i8, time.minute as i8, time.second as i8, 0)
+                let hour = convert_12_to_24_hour(time.hour, time.meridiem.as_ref());
+
+                let (hour, minute, second, nanosecond) =
+                    jiff_time_components(hour, time.minute, time.second, 0)?;
+
+                date.at(hour, minute, second, nanosecond)
                     .to_zoned(now.time_zone().clone())
                     .map_err(|e| {
                         TempsError::backend_error(format!("Failed to create time: {e}"), "jiff")
@@ -299,33 +344,36 @@ impl TimeParser for JiffProvider {
                 let day_result = self.parse_expression(TimeExpression::Day(day_time.day))?;
                 let date = day_result.date();
 
-                let hour =
-                    convert_12_to_24_hour(day_time.time.hour, day_time.time.meridiem.as_ref());
-
-                // Validate time components
-                if hour > 23 || day_time.time.minute > 59 || day_time.time.second > 59 {
+                if !is_valid_time(
+                    day_time.time.hour,
+                    day_time.time.minute,
+                    day_time.time.second,
+                    day_time.time.meridiem,
+                ) {
                     return Err(TempsError::invalid_time(
-                        hour,
+                        day_time.time.hour,
                         day_time.time.minute,
                         day_time.time.second,
                     ));
                 }
 
-                date.at(
-                    hour as i8,
-                    day_time.time.minute as i8,
-                    day_time.time.second as i8,
-                    0,
-                )
-                .to_zoned(day_result.time_zone().clone())
-                .map_err(|e| {
-                    TempsError::backend_error(format!("Failed to create day time: {e}"), "jiff")
-                })
+                let hour =
+                    convert_12_to_24_hour(day_time.time.hour, day_time.time.meridiem.as_ref());
+
+                let (hour, minute, second, nanosecond) =
+                    jiff_time_components(hour, day_time.time.minute, day_time.time.second, 0)?;
+
+                date.at(hour, minute, second, nanosecond)
+                    .to_zoned(day_result.time_zone().clone())
+                    .map_err(|e| {
+                        TempsError::backend_error(format!("Failed to create day time: {e}"), "jiff")
+                    })
             }
             TimeExpression::Date(date) => {
                 use jiff::civil::Date;
 
-                let jiff_date = Date::new(date.year as i16, date.month as i8, date.day as i8)
+                let (year, month, day) = jiff_date_components(date.year, date.month, date.day)?;
+                let jiff_date = Date::new(year, month, day)
                     .map_err(|_| TempsError::invalid_date(date.year, date.month, date.day))?;
 
                 jiff_date

@@ -1,13 +1,12 @@
 use winnow::{
     Parser,
-    ascii::Caseless,
+    ascii::{Caseless, multispace0, multispace1},
     combinator::{alt, delimited, opt, preceded},
-    token::take_while,
 };
 
 use crate::{
     DayReference, DayTime, Direction, LanguageParser, RelativeTime, Result, StandardDate, Time,
-    TimeExpression, TimeUnit, Weekday, WeekdayModifier, common, error::ParseErrorExt,
+    TimeExpression, TimeUnit, Weekday, WeekdayModifier, common, error::ParseErrorExt, time_utils,
 };
 
 /// Parser for German natural language time expressions.
@@ -21,20 +20,26 @@ impl GermanParser {
     fn parse_number(input: &mut &str) -> winnow::Result<i64> {
         alt((
             common::parse_digit_number,
-            "einem".value(1),
-            "einer".value(1),
-            "einen".value(1),
-            "eine".value(1),
-            "ein".value(1),
-            "zwei".value(2),
-            "drei".value(3),
-            "vier".value(4),
-            "fünf".value(5),
-            "sechs".value(6),
-            "sieben".value(7),
-            "acht".value(8),
-            "neun".value(9),
-            "zehn".value(10),
+            alt((
+                "einem".value(1),
+                "einer".value(1),
+                "einen".value(1),
+                "eine".value(1),
+                "ein".value(1),
+            )),
+            alt((
+                "zwei".value(2),
+                "drei".value(3),
+                "vier".value(4),
+                "fünf".value(5),
+                "sechs".value(6),
+            )),
+            alt((
+                "sieben".value(7),
+                "acht".value(8),
+                "neun".value(9),
+                "zehn".value(10),
+            )),
         ))
         .parse_next(input)
     }
@@ -81,14 +86,10 @@ impl GermanParser {
 
     fn parse_relative_past(input: &mut &str) -> winnow::Result<TimeExpression> {
         preceded(
-            "vor",
+            Caseless("vor"),
             preceded(
-                take_while(1.., ' '),
-                (
-                    Self::parse_number,
-                    take_while(1.., ' '),
-                    Self::parse_time_unit,
-                ),
+                multispace1,
+                (Self::parse_number, multispace1, Self::parse_time_unit),
             ),
         )
         .map(|(amount, _, unit)| {
@@ -103,14 +104,10 @@ impl GermanParser {
 
     fn parse_relative_future(input: &mut &str) -> winnow::Result<TimeExpression> {
         preceded(
-            "in",
+            Caseless("in"),
             preceded(
-                take_while(1.., ' '),
-                (
-                    Self::parse_number,
-                    take_while(1.., ' '),
-                    Self::parse_time_unit,
-                ),
+                multispace1,
+                (Self::parse_number, multispace1, Self::parse_time_unit),
             ),
         )
         .map(|(amount, _, unit)| {
@@ -193,7 +190,7 @@ impl GermanParser {
     fn parse_modified_weekday(input: &mut &str) -> winnow::Result<DayReference> {
         (
             Self::parse_weekday_modifier,
-            take_while(1.., ' '),
+            multispace1,
             Self::parse_weekday,
         )
             .map(|(modifier, _, day)| DayReference::Weekday {
@@ -223,20 +220,23 @@ impl GermanParser {
     }
 
     fn parse_time_digits(input: &mut &str) -> winnow::Result<(u8, u8, u8)> {
-        let hour = common::parse_two_digit_number(input)?;
-        ':'.parse_next(input)?;
-        let minute = common::parse_two_digit_number(input)?;
-        let second = opt(preceded(':', common::parse_two_digit_number))
-            .parse_next(input)?
-            .unwrap_or(0);
-
-        Ok((hour, minute, second))
+        (
+            common::parse_two_digit_number,
+            ':',
+            common::parse_two_digit_number,
+            opt(preceded(':', common::parse_two_digit_number)).map(|second| second.unwrap_or(0)),
+        )
+            .verify_map(|(hour, _, minute, second)| {
+                time_utils::is_valid_24_hour_time(hour, minute, second)
+                    .then_some((hour, minute, second))
+            })
+            .parse_next(input)
     }
 
     fn parse_time(input: &mut &str) -> winnow::Result<TimeExpression> {
         (
             Self::parse_time_digits,
-            opt(preceded(take_while(1.., ' '), Caseless("uhr"))),
+            opt(preceded(multispace1, Caseless("uhr"))),
         )
             .map(|((hour, minute, second), _)| {
                 TimeExpression::Time(Time {
@@ -256,11 +256,11 @@ impl GermanParser {
                 Self::parse_modified_weekday,
                 Self::parse_simple_weekday,
             )),
-            take_while(1.., ' '),
-            "um",
-            take_while(1.., ' '),
+            multispace1,
+            Caseless("um"),
+            multispace1,
             Self::parse_time_digits,
-            opt(preceded(take_while(1.., ' '), Caseless("uhr"))),
+            opt(preceded(multispace1, Caseless("uhr"))),
         )
             .map(|(day, _, _, _, time_digits, _)| {
                 TimeExpression::DayTime(DayTime {
@@ -285,7 +285,10 @@ impl GermanParser {
             '.',
             common::parse_four_digit_number,
         )
-            .map(|(day, _, month, _, year)| TimeExpression::Date(StandardDate { day, month, year }))
+            .verify_map(|(day, _, month, _, year)| {
+                time_utils::is_valid_calendar_date(year, month, day)
+                    .then_some(TimeExpression::Date(StandardDate { day, month, year }))
+            })
             .parse_next(input)
     }
 }
@@ -293,7 +296,7 @@ impl GermanParser {
 impl LanguageParser for GermanParser {
     fn parse(&self, input: &str) -> Result<TimeExpression> {
         delimited(
-            take_while(0.., ' '),
+            multispace0,
             alt((
                 Self::parse_iso_datetime,
                 Self::parse_date_format,
@@ -304,7 +307,7 @@ impl LanguageParser for GermanParser {
                 Self::parse_relative_past,
                 Self::parse_relative_future,
             )),
-            take_while(0.., ' '),
+            multispace0,
         )
         .parse(input)
         .map_err(|e| e.to_temps_error(input))

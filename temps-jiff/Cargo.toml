@@ -10,7 +10,7 @@ license.workspace = true
 
 [dependencies]
 temps-core = { path = "../temps-core", version = "3.0.0" }
-jiff = "0.2.19"
+jiff = "0.2.24"
 
 [dev-dependencies]
 mockall = "0.14.0"

@@ -734,6 +734,53 @@ fn test_time_parsing_with_jiff() {
 }
 
 #[test]
+fn test_jiff_provider_rejects_invalid_programmatic_inputs() {
+    let provider = JiffProvider;
+
+    let invalid_time = TimeExpression::Time(Time {
+        hour: 0,
+        minute: 30,
+        second: 0,
+        meridiem: Some(Meridiem::PM),
+    });
+    assert!(matches!(
+        provider.parse_expression(invalid_time),
+        Err(TempsError::InvalidTime { hour: 0, .. })
+    ));
+
+    let invalid_timezone = TimeExpression::Absolute(AbsoluteTime {
+        year: 2024,
+        month: 1,
+        day: 15,
+        hour: Some(12),
+        minute: Some(0),
+        second: Some(0),
+        nanosecond: None,
+        timezone: Some(Timezone::Offset {
+            hours: -12,
+            minutes: 30,
+        }),
+    });
+    assert!(matches!(
+        provider.parse_expression(invalid_timezone),
+        Err(TempsError::InvalidTimezoneOffset {
+            hours: -12,
+            minutes: 30
+        })
+    ));
+
+    let negative_relative = TimeExpression::Relative(RelativeTime {
+        amount: -1,
+        unit: TimeUnit::Hour,
+        direction: Direction::Future,
+    });
+    assert!(matches!(
+        provider.parse_expression(negative_relative),
+        Err(TempsError::DateCalculationError { .. })
+    ));
+}
+
+#[test]
 fn test_day_at_time_with_jiff() {
     let result = parse_to_zoned("tomorrow at 3:30 pm", Language::English);
     assert!(result.is_ok());

@@ -9,7 +9,7 @@ readme = "../README.md"
 license.workspace = true
 
 [dependencies]
-winnow = "0.7.14"
+winnow = "1.0.2"
 thiserror = "2.0.18"
 
 [dev-dependencies]

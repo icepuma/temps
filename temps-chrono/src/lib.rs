@@ -55,6 +55,7 @@ use temps_core::{
     errors::*,
     time_utils::{
         calculate_timezone_offset_seconds, calculate_weekday_offset, convert_12_to_24_hour,
+        is_valid_time, is_valid_timezone_offset,
     },
 };
 
@@ -86,6 +87,12 @@ impl TimeParser for ChronoProvider {
         match expr {
             TimeExpression::Now => Ok(self.now()),
             TimeExpression::Relative(rel) => {
+                if rel.amount < 0 {
+                    return Err(TempsError::date_calculation(
+                        ERR_RELATIVE_AMOUNT_NON_NEGATIVE,
+                    ));
+                }
+
                 let now = self.now();
 
                 // Handle months and years separately for proper date arithmetic
@@ -170,6 +177,13 @@ impl TimeParser for ChronoProvider {
                             Utc.from_utc_datetime(&naive_dt).with_timezone(&Local)
                         }
                         Some(temps_core::Timezone::Offset { hours, minutes }) => {
+                            if !is_valid_timezone_offset(temps_core::Timezone::Offset {
+                                hours: *hours,
+                                minutes: *minutes,
+                            }) {
+                                return Err(TempsError::invalid_timezone_offset(*hours, *minutes));
+                            }
+
                             let offset_seconds =
                                 calculate_timezone_offset_seconds(*hours, *minutes);
                             let offset =
@@ -270,6 +284,14 @@ impl TimeParser for ChronoProvider {
             }
             TimeExpression::Time(time) => {
                 let now = self.now();
+                if !is_valid_time(time.hour, time.minute, time.second, time.meridiem) {
+                    return Err(TempsError::invalid_time(
+                        time.hour,
+                        time.minute,
+                        time.second,
+                    ));
+                }
+
                 let hour = convert_12_to_24_hour(time.hour, time.meridiem.as_ref()) as u32;
 
                 Ok(now
@@ -284,6 +306,19 @@ impl TimeParser for ChronoProvider {
                 // First get the day
                 let day_result = self.parse_expression(TimeExpression::Day(day_time.day))?;
                 let date = day_result.date_naive();
+
+                if !is_valid_time(
+                    day_time.time.hour,
+                    day_time.time.minute,
+                    day_time.time.second,
+                    day_time.time.meridiem,
+                ) {
+                    return Err(TempsError::invalid_time(
+                        day_time.time.hour,
+                        day_time.time.minute,
+                        day_time.time.second,
+                    ));
+                }
 
                 let hour =
                     convert_12_to_24_hour(day_time.time.hour, day_time.time.meridiem.as_ref())

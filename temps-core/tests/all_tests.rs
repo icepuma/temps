@@ -454,6 +454,8 @@ fn test_iso_datetime_parsing() {
     let test_cases = vec![
         // Basic date
         "2024-01-15",
+        // Leap day
+        "2024-02-29",
         // Date with time
         "2024-01-15T14:30:00",
         // Date with time and timezone
@@ -482,6 +484,12 @@ fn test_iso_datetime_parsing() {
                     assert_eq!(abs.year, 2024);
                     assert_eq!(abs.month, 1);
                     assert_eq!(abs.day, 15);
+                    assert_eq!(abs.hour, None);
+                }
+                "2024-02-29" => {
+                    assert_eq!(abs.year, 2024);
+                    assert_eq!(abs.month, 2);
+                    assert_eq!(abs.day, 29);
                     assert_eq!(abs.hour, None);
                 }
                 "2024-01-15T14:30:00" | "2024-01-15 14:30:00" => {
@@ -564,6 +572,12 @@ fn test_iso_datetime_parsing() {
                     assert_eq!(abs.day, 15);
                     assert_eq!(abs.hour, None);
                 }
+                "2024-02-29" => {
+                    assert_eq!(abs.year, 2024);
+                    assert_eq!(abs.month, 2);
+                    assert_eq!(abs.day, 29);
+                    assert_eq!(abs.hour, None);
+                }
                 "2024-01-15T14:30:00" | "2024-01-15 14:30:00" => {
                     assert_eq!(abs.year, 2024);
                     assert_eq!(abs.month, 1);
@@ -627,6 +641,42 @@ fn test_iso_datetime_parsing() {
             panic!("Expected absolute time expression for: {input}");
         }
     }
+}
+
+#[test]
+fn test_parser_rejects_invalid_iso_datetime_components() {
+    let test_cases = vec![
+        "2023-02-29",
+        "2024-02-30",
+        "2024-13-01",
+        "2024-01-32",
+        "2024-01-15T24:00:00",
+        "2024-01-15T23:60:00",
+        "2024-01-15T23:59:60",
+        "2024-01-15T23:59:00+14:30",
+        "2024-01-15T23:59:00-12:30",
+        "2024-01-15T23:59:00-00:30",
+    ];
+
+    for input in test_cases {
+        assert!(
+            parse(input, Language::English).is_err(),
+            "Invalid ISO datetime parsed successfully with English parser: {input}"
+        );
+        assert!(
+            parse(input, Language::German).is_err(),
+            "Invalid ISO datetime parsed successfully with German parser: {input}"
+        );
+    }
+}
+
+#[test]
+fn test_timezone_offset_seconds_preserve_negative_minutes() {
+    assert_eq!(time_utils::calculate_timezone_offset_seconds(5, 30), 19_800);
+    assert_eq!(
+        time_utils::calculate_timezone_offset_seconds(-5, 30),
+        -19_800
+    );
 }
 
 #[test]
@@ -770,6 +820,33 @@ fn test_time_parsing_english() {
                 meridiem: None,
             },
         ),
+        (
+            "3:30pm",
+            Time {
+                hour: 3,
+                minute: 30,
+                second: 0,
+                meridiem: Some(Meridiem::PM),
+            },
+        ),
+        (
+            "3pm",
+            Time {
+                hour: 3,
+                minute: 0,
+                second: 0,
+                meridiem: Some(Meridiem::PM),
+            },
+        ),
+        (
+            "12am",
+            Time {
+                hour: 12,
+                minute: 0,
+                second: 0,
+                meridiem: Some(Meridiem::AM),
+            },
+        ),
     ];
 
     for (input, expected_time) in test_cases {
@@ -785,9 +862,39 @@ fn test_time_parsing_english() {
 }
 
 #[test]
+fn test_parser_rejects_invalid_time_components() {
+    let english_test_cases = vec![
+        "24:00",
+        "23:60",
+        "23:59:60",
+        "0:30 pm",
+        "13:00 pm",
+        "tomorrow at 24:00",
+        "tomorrow at 13:00 pm",
+    ];
+
+    for input in english_test_cases {
+        assert!(
+            parse(input, Language::English).is_err(),
+            "Invalid English time parsed successfully: {input}"
+        );
+    }
+
+    let german_test_cases = vec!["24:00", "23:60", "23:59:60", "morgen um 24:00"];
+
+    for input in german_test_cases {
+        assert!(
+            parse(input, Language::German).is_err(),
+            "Invalid German time parsed successfully: {input}"
+        );
+    }
+}
+
+#[test]
 fn test_day_at_time_english() {
     let test_cases = vec![
         "today at 3:30 pm",
+        "yesterday at 3pm",
         "tomorrow at 10:00 am",
         "monday at 14:30",
         "next friday at 9:00 pm",
@@ -847,6 +954,25 @@ fn test_date_format_parsing() {
 }
 
 #[test]
+fn test_parser_rejects_invalid_english_date_formats() {
+    let test_cases = vec![
+        "31/04/2024",
+        "29/02/2023",
+        "15/13/2024",
+        "00/03/2024",
+        "15/03-2024",
+        "15-03/2024",
+    ];
+
+    for input in test_cases {
+        assert!(
+            parse(input, Language::English).is_err(),
+            "Invalid English date parsed successfully: {input}"
+        );
+    }
+}
+
+#[test]
 fn test_time_parsing_german() {
     let test_cases = vec![
         (
@@ -895,6 +1021,7 @@ fn test_day_at_time_german() {
     let test_cases = vec![
         "heute um 14:30",
         "morgen um 10:00 Uhr",
+        "morgen UM 10:00 Uhr",
         "Montag um 15:45",
         "nächsten Freitag um 21:00",
     ];
@@ -907,6 +1034,33 @@ fn test_day_at_time_german() {
             matches!(parsed, TimeExpression::DayTime(_)),
             "Expected DayTime expression for: {input}"
         );
+    }
+}
+
+#[test]
+fn test_german_relative_keywords_are_case_insensitive() {
+    let test_cases = vec![
+        (
+            "In 5 Minuten",
+            TimeExpression::Relative(RelativeTime {
+                amount: 5,
+                unit: TimeUnit::Minute,
+                direction: Direction::Future,
+            }),
+        ),
+        (
+            "Vor 2 Stunden",
+            TimeExpression::Relative(RelativeTime {
+                amount: 2,
+                unit: TimeUnit::Hour,
+                direction: Direction::Past,
+            }),
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let parsed = parse(input, Language::German).unwrap();
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
     }
 }
 
@@ -948,6 +1102,18 @@ fn test_date_format_parsing_german() {
         } else {
             panic!("Expected Date expression for: {input}");
         }
+    }
+}
+
+#[test]
+fn test_parser_rejects_invalid_german_date_formats() {
+    let test_cases = vec!["31.04.2024", "29.02.2023", "15.13.2024", "00.03.2024"];
+
+    for input in test_cases {
+        assert!(
+            parse(input, Language::German).is_err(),
+            "Invalid German date parsed successfully: {input}"
+        );
     }
 }
 
