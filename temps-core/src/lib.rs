@@ -45,13 +45,6 @@
 //! provides detailed information about what went wrong during parsing or
 //! date calculations.
 
-use winnow::{
-    ascii::digit1,
-    combinator::{alt, opt},
-    prelude::*,
-    token::{one_of, take_while},
-};
-
 // ===== Error Module =====
 pub mod error;
 pub use error::{Result, TempsError};
@@ -744,169 +737,200 @@ pub mod time_utils {
 
 /// Common parsing utilities shared across language implementations.
 ///
-/// This module contains parser functions that are shared between
-/// different language implementations, such as ISO datetime parsing
-/// and number parsing.
+/// This module contains parser building blocks that are shared between
+/// different language implementations, such as ISO datetime parsing,
+/// number parsing, and the case-insensitive keyword helper.
 pub mod common {
+    use super::{AbsoluteTime, TimeExpression, Timezone, time_utils};
+    use chumsky::{error::Rich, extra, prelude::*, text};
 
-    use super::*;
+    /// The error type used throughout the parsers.
+    pub type ParserError<'a> = extra::Err<Rich<'a, char>>;
 
-    /// Parse a sequence of digits as an i64.
+    /// Match an ASCII keyword case-insensitively.
     ///
-    /// Used for parsing numeric amounts in time expressions.
-    ///
-    /// # Examples
-    ///
-    /// This parses "123" -> 123, "5" -> 5, etc.
-    pub fn parse_digit_number(input: &mut &str) -> winnow::Result<i64> {
-        digit1.try_map(|s: &str| s.parse::<i64>()).parse_next(input)
+    /// Used for English keywords ("now", "ago", "in") and German
+    /// abbreviations ("sek", "min", "uhr"). Non-ASCII characters in
+    /// `target` are compared exactly. The parser is internally a chain
+    /// of single-character matchers so error messages mention the
+    /// keyword's first expected character; the whole branch is then
+    /// labelled with `target` so callers see "expected `now`" etc.
+    pub fn keyword_ci<'a>(
+        target: &'static str,
+    ) -> impl Parser<'a, &'a str, (), ParserError<'a>> + Clone {
+        let mut chars = target.chars();
+        let first = chars.next().expect("keyword must be non-empty");
+        let mut parser: chumsky::Boxed<'a, 'a, &'a str, (), ParserError<'a>> =
+            char_ci(first).ignored().boxed();
+        for c in chars {
+            parser = parser.then_ignore(char_ci(c)).boxed();
+        }
+        parser.labelled(target)
     }
 
-    /// Parse ISO 8601 datetime format.
-    ///
-    /// Supports various ISO datetime formats:
-    /// - Date only: `2024-01-15`
-    /// - Date and time: `2024-01-15T14:30:00`
-    /// - With timezone: `2024-01-15T14:30:00Z`
-    /// - With offset: `2024-01-15T14:30:00+02:00`
-    /// - With fractional seconds: `2024-01-15T14:30:00.123Z`
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// // Parses: "2024-01-15T14:30:00Z"
-    /// // Into: TimeExpression::Absolute(AbsoluteTime { ... })
-    /// ```
-    pub fn parse_iso_datetime(input: &mut &str) -> winnow::Result<TimeExpression> {
-        // Parse date components
-        let (year, month, day) = (
-            parse_four_digit_number,
-            '-',
-            parse_two_digit_number,
-            '-',
-            parse_two_digit_number,
-        )
-            .verify_map(|(year, _, month, _, day)| {
-                time_utils::is_valid_calendar_date(year, month, day).then_some((year, month, day))
+    fn char_ci<'a>(target: char) -> chumsky::Boxed<'a, 'a, &'a str, char, ParserError<'a>> {
+        let lower = target.to_ascii_lowercase();
+        let upper = target.to_ascii_uppercase();
+        if lower == upper {
+            just(target).boxed()
+        } else {
+            one_of([lower, upper]).boxed()
+        }
+    }
+
+    fn ascii_digit<'a>() -> impl Parser<'a, &'a str, char, ParserError<'a>> + Clone {
+        one_of('0'..='9').labelled("digit")
+    }
+
+    /// Parse a sequence of digits as an `i64`.
+    pub fn digit_number<'a>() -> impl Parser<'a, &'a str, i64, ParserError<'a>> + Clone {
+        ascii_digit()
+            .repeated()
+            .at_least(1)
+            .to_slice()
+            .try_map(|s: &str, span| {
+                s.parse::<i64>()
+                    .map_err(|e| Rich::custom(span, e.to_string()))
             })
-            .parse_next(input)?;
-
-        // Parse optional time components
-        let time_part = opt((
-            one_of(['T', ' ']),
-            parse_two_digit_number, // hour
-            ':',
-            parse_two_digit_number, // minute
-            opt((
-                ':',
-                parse_two_digit_number, // second
-                opt((
-                    '.',
-                    digit1.try_map(|s: &str| {
-                        // Convert fractional seconds to nanoseconds
-                        let fraction = if s.len() > 9 { &s[..9] } else { s };
-
-                        // Parse the fraction and multiply by appropriate power of 10
-                        let parsed = fraction.parse::<u32>()?;
-                        let fraction_len = u32::try_from(fraction.len())
-                            .expect("fraction length is capped at 9 digits");
-                        let multiplier = 10_u32.pow(9 - fraction_len);
-                        Ok::<u32, std::num::ParseIntError>(parsed * multiplier)
-                    }),
-                )),
-            )),
-            opt(parse_timezone),
-        )
-            .verify_map(|(_, h, _, m, sec_part, tz)| {
-                let second = sec_part.map_or(0, |(_, s, _)| s);
-                time_utils::is_valid_24_hour_time(h, m, second).then_some((h, m, sec_part, tz))
-            }))
-        .parse_next(input)?;
-
-        let (hour, minute, second, nanosecond, timezone) =
-            if let Some((h, m, sec_part, tz)) = time_part {
-                // We have time components
-                let hour = Some(h);
-                let minute = Some(m);
-
-                // Extract seconds and fractional seconds if present
-                let (second, nanosecond) = if let Some((_, s, frac)) = sec_part {
-                    (Some(s), frac.map(|(_, n)| n))
-                } else {
-                    (None, None)
-                };
-
-                (hour, minute, second, nanosecond, tz)
-            } else {
-                // Date only, no time components
-                (None, None, None, None, None)
-            };
-
-        Ok(TimeExpression::Absolute(AbsoluteTime {
-            year,
-            month,
-            day,
-            hour,
-            minute,
-            second,
-            nanosecond,
-            timezone,
-        }))
+            .labelled("number")
     }
 
-    /// Parse timezone specification.
-    ///
-    /// Supports:
-    /// - `Z` for UTC
-    /// - `+HH:MM` or `-HH:MM` for offsets
-    /// - `+HH` or `-HH` (minutes optional)
-    fn parse_timezone(input: &mut &str) -> winnow::Result<Timezone> {
-        alt(("Z".map(|_| Timezone::Utc), parse_offset_timezone)).parse_next(input)
+    /// Parse a 1 or 2 digit number as `u8`.
+    pub fn two_digit_number<'a>() -> impl Parser<'a, &'a str, u8, ParserError<'a>> + Clone {
+        ascii_digit()
+            .repeated()
+            .at_least(1)
+            .at_most(2)
+            .to_slice()
+            .try_map(|s: &str, span| {
+                s.parse::<u8>()
+                    .map_err(|e| Rich::custom(span, e.to_string()))
+            })
     }
 
-    /// Parse timezone offset in +/-HH:MM format.
-    ///
-    /// Examples: `+02:00`, `-05:30`, `+09`
-    fn parse_offset_timezone(input: &mut &str) -> winnow::Result<Timezone> {
-        (
-            one_of(['+', '-']),
-            parse_two_digit_number,
-            opt((':', parse_two_digit_number)).map(|minutes| minutes.map_or(0, |(_, m)| m)),
-        )
-            .verify_map(|(sign, hours, minutes)| {
-                let hours = i8::try_from(hours).ok()?;
+    /// Parse a 4-digit number as `u16`.
+    pub fn four_digit_number<'a>() -> impl Parser<'a, &'a str, u16, ParserError<'a>> + Clone {
+        ascii_digit()
+            .repeated()
+            .exactly(4)
+            .to_slice()
+            .try_map(|s: &str, span| {
+                s.parse::<u16>()
+                    .map_err(|e| Rich::custom(span, e.to_string()))
+            })
+            .labelled("4-digit year")
+    }
+
+    fn offset_timezone<'a>() -> impl Parser<'a, &'a str, Timezone, ParserError<'a>> + Clone {
+        one_of(['+', '-'])
+            .then(two_digit_number())
+            .then(just(':').ignore_then(two_digit_number()).or_not())
+            .try_map(|((sign, hours), minutes), span| {
+                let minutes = minutes.unwrap_or(0);
+                let hours = i8::try_from(hours)
+                    .map_err(|_| Rich::custom(span, "timezone hour offset out of range"))?;
                 let signed_hours = if sign == '+' { hours } else { -hours };
                 let offset = Timezone::Offset {
                     hours: signed_hours,
                     minutes,
                 };
 
-                let can_represent_offset = !(sign == '-' && hours == 0 && minutes > 0);
-
-                (can_represent_offset && time_utils::is_valid_timezone_offset(offset))
-                    .then_some(offset)
+                let can_represent = !(sign == '-' && hours == 0 && minutes > 0);
+                if can_represent && time_utils::is_valid_timezone_offset(offset) {
+                    Ok(offset)
+                } else {
+                    Err(Rich::custom(span, "invalid timezone offset"))
+                }
             })
-            .parse_next(input)
     }
 
-    /// Parse a two-digit number as u8.
-    ///
-    /// Used for parsing hours, minutes, days, months.
-    /// Accepts 1 or 2 digits (e.g., "5" or "05").
-    pub fn parse_two_digit_number(input: &mut &str) -> winnow::Result<u8> {
-        take_while(1..=2, |c: char| c.is_ascii_digit())
-            .try_map(|s: &str| s.parse::<u8>())
-            .parse_next(input)
+    fn timezone<'a>() -> impl Parser<'a, &'a str, Timezone, ParserError<'a>> + Clone {
+        choice((just('Z').to(Timezone::Utc), offset_timezone()))
     }
 
-    /// Parse a four-digit number as u16.
+    fn fractional_seconds<'a>() -> impl Parser<'a, &'a str, u32, ParserError<'a>> + Clone {
+        text::digits(10).to_slice().try_map(|s: &str, span| {
+            let fraction = if s.len() > 9 { &s[..9] } else { s };
+            let parsed: u32 = fraction
+                .parse()
+                .map_err(|e: std::num::ParseIntError| Rich::custom(span, e.to_string()))?;
+            let fraction_len =
+                u32::try_from(fraction.len()).expect("fraction length is capped at 9 digits");
+            Ok(parsed * 10_u32.pow(9 - fraction_len))
+        })
+    }
+
+    /// Parse ISO 8601 datetime format.
     ///
-    /// Used for parsing years.
-    /// Requires exactly 4 digits.
-    pub fn parse_four_digit_number(input: &mut &str) -> winnow::Result<u16> {
-        take_while(4..=4, |c: char| c.is_ascii_digit())
-            .try_map(|s: &str| s.parse::<u16>())
-            .parse_next(input)
+    /// Supports:
+    /// - Date only: `2024-01-15`
+    /// - Date and time: `2024-01-15T14:30:00`
+    /// - With timezone: `2024-01-15T14:30:00Z`
+    /// - With offset: `2024-01-15T14:30:00+02:00`
+    /// - With fractional seconds: `2024-01-15T14:30:00.123Z`
+    pub fn iso_datetime<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+        let date = four_digit_number()
+            .then_ignore(just('-'))
+            .then(two_digit_number())
+            .then_ignore(just('-'))
+            .then(two_digit_number())
+            .try_map(|((year, month), day), span| {
+                if time_utils::is_valid_calendar_date(year, month, day) {
+                    Ok((year, month, day))
+                } else {
+                    Err(Rich::custom(span, "invalid calendar date"))
+                }
+            });
+
+        let time = one_of(['T', ' '])
+            .ignore_then(two_digit_number())
+            .then_ignore(just(':'))
+            .then(two_digit_number())
+            .then(
+                just(':')
+                    .ignore_then(two_digit_number())
+                    .then(just('.').ignore_then(fractional_seconds()).or_not())
+                    .or_not(),
+            )
+            .then(timezone().or_not())
+            .try_map(|(((hour, minute), sec_part), tz), span| {
+                let second = sec_part.as_ref().map_or(0, |(s, _)| *s);
+                if time_utils::is_valid_24_hour_time(hour, minute, second) {
+                    Ok((hour, minute, sec_part, tz))
+                } else {
+                    Err(Rich::custom(span, "invalid time"))
+                }
+            });
+
+        date.then(time.or_not())
+            .map(|((year, month, day), time_opt)| match time_opt {
+                Some((h, m, sec_part, tz)) => {
+                    let (second, nanosecond) = match sec_part {
+                        Some((s, frac)) => (Some(s), frac),
+                        None => (None, None),
+                    };
+                    TimeExpression::Absolute(AbsoluteTime {
+                        year,
+                        month,
+                        day,
+                        hour: Some(h),
+                        minute: Some(m),
+                        second,
+                        nanosecond,
+                        timezone: tz,
+                    })
+                }
+                None => TimeExpression::Absolute(AbsoluteTime {
+                    year,
+                    month,
+                    day,
+                    hour: None,
+                    minute: None,
+                    second: None,
+                    nanosecond: None,
+                    timezone: None,
+                }),
+            })
     }
 }
 

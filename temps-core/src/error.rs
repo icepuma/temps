@@ -322,23 +322,104 @@ impl TempsError {
 /// ```
 pub type Result<T> = std::result::Result<T, TempsError>;
 
-/// Extension trait for converting parser errors to TempsError.
+/// Convert a collection of chumsky parser errors into a [`TempsError`]
+/// and an ariadne-rendered diagnostic string.
 ///
-/// This trait is implemented for winnow parser errors to provide
-/// convenient conversion to our error type.
-pub trait ParseErrorExt {
-    /// Convert a parser error to a TempsError.
-    ///
-    /// This method extracts position information from the parser error
-    /// and creates a properly formatted TempsError.
-    fn to_temps_error(self, input: &str) -> TempsError;
+/// The first error's span is used for the position field. The full
+/// rendered report (with source context) is folded into the error's
+/// message so callers that simply display the error still get a useful,
+/// human-readable diagnostic.
+#[must_use]
+pub fn rich_errors_to_temps_error(
+    input: &str,
+    errors: Vec<chumsky::error::Rich<'_, char>>,
+) -> TempsError {
+    use ariadne::{Color, Label, Report, ReportKind, Source};
+
+    if input.is_empty() {
+        return TempsError::parse_error_with_position(
+            "input is empty; expected a time expression like `now`, `in 5 minutes`, or an ISO date",
+            input,
+            0,
+        );
+    }
+
+    let position = errors.first().map(|e| e.span().start).unwrap_or(0);
+
+    let source_id: &str = "input";
+    let mut rendered = String::new();
+    for err in &errors {
+        let span = err.span();
+        let range = span.start..span.end.max(span.start + 1).min(input.len().max(1));
+        let mut buf = Vec::new();
+        let (headline, detail) = format_rich(err);
+        let report = Report::build(ReportKind::Error, (source_id, range.clone()))
+            .with_message(headline)
+            .with_label(
+                Label::new((source_id, range))
+                    .with_message(detail)
+                    .with_color(Color::Red),
+            )
+            .finish();
+
+        if report
+            .write((source_id, Source::from(input)), &mut buf)
+            .is_ok()
+        {
+            rendered.push_str(&String::from_utf8_lossy(&buf));
+        } else {
+            rendered.push_str(&err.to_string());
+            rendered.push('\n');
+        }
+    }
+
+    let message = if rendered.is_empty() {
+        "Failed to parse time expression".to_string()
+    } else {
+        rendered.trim_end().to_string()
+    };
+
+    TempsError::parse_error_with_position(message, input, position)
 }
 
-impl ParseErrorExt for winnow::error::ParseError<&str, winnow::error::ContextError> {
-    fn to_temps_error(self, input: &str) -> TempsError {
-        let position = self.offset();
-        let message = format!("Parser error: {self}");
-        TempsError::parse_error_with_position(message, input, position)
+/// Render a chumsky [`Rich`](chumsky::error::Rich) error as a `(headline, detail)`
+/// pair suitable for an ariadne report.
+fn format_rich(err: &chumsky::error::Rich<'_, char>) -> (String, String) {
+    use chumsky::error::RichReason;
+
+    match err.reason() {
+        RichReason::Custom(msg) => ("invalid time expression".to_string(), msg.clone()),
+        _ => {
+            let found = match err.found() {
+                Some(c) => format!("`{}`", c.escape_default()),
+                None => "end of input".to_string(),
+            };
+
+            let mut seen = std::collections::BTreeSet::new();
+            let mut expected: Vec<String> = Vec::new();
+            for pat in err.expected() {
+                let rendered = pat.to_string();
+                if seen.insert(rendered.clone()) {
+                    expected.push(rendered);
+                }
+            }
+
+            let detail = match expected.as_slice() {
+                [] => format!("unexpected {found}"),
+                [one] => format!("expected {one}, found {found}"),
+                many => {
+                    let last = many.last().expect("non-empty");
+                    let head = &many[..many.len() - 1];
+                    format!(
+                        "expected one of {} or {}, found {found}",
+                        head.join(", "),
+                        last
+                    )
+                }
+            };
+
+            ("could not parse time expression".to_string(), detail)
+        }
     }
 }
 
