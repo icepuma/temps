@@ -25,7 +25,7 @@
 //! println!("In 5 minutes: {}", datetime);
 //!
 //! // Or use the provider directly
-//! let provider = ChronoProvider;
+//! let provider = ChronoProvider::new();
 //! let expr = temps_core::parse("tomorrow at 3:30 pm", Language::English).unwrap();
 //! let datetime = provider.parse_expression(expr).unwrap();
 //! ```
@@ -106,17 +106,54 @@ use temps_core::{
 /// use temps_chrono::ChronoProvider;
 /// use temps_core::{TimeParser, parse, Language};
 ///
-/// let provider = ChronoProvider;
+/// let provider = ChronoProvider::new();
 /// let expr = parse("next Monday", Language::English).unwrap();
 /// let datetime = provider.parse_expression(expr).unwrap();
 /// ```
-pub struct ChronoProvider;
+#[derive(Debug, Clone, Default)]
+pub struct ChronoProvider {
+    /// Fixed instant to resolve against, or `None` to read the system clock.
+    now: Option<DateTime<Local>>,
+}
+
+impl ChronoProvider {
+    /// A provider that resolves expressions against the system clock.
+    #[must_use]
+    pub fn new() -> Self {
+        Self { now: None }
+    }
+
+    /// A provider pinned to a fixed instant.
+    ///
+    /// Resolution of "now", "tomorrow" and every relative expression is
+    /// relative to this instant, which makes results reproducible — including
+    /// around daylight-saving transitions, where behaviour otherwise depends on
+    /// the day the code happens to run.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chrono::{Local, TimeZone};
+    /// use temps_chrono::ChronoProvider;
+    /// use temps_core::{Language, TimeParser, parse};
+    ///
+    /// let fixed = Local.with_ymd_and_hms(2024, 1, 31, 10, 0, 0).unwrap();
+    /// let provider = ChronoProvider::at(fixed);
+    /// let expr = parse("tomorrow", Language::English).unwrap();
+    /// let resolved = provider.parse_expression(expr).unwrap();
+    /// assert_eq!(resolved.date_naive().to_string(), "2024-02-01");
+    /// ```
+    #[must_use]
+    pub fn at(now: DateTime<Local>) -> Self {
+        Self { now: Some(now) }
+    }
+}
 
 impl TimeParser for ChronoProvider {
     type DateTime = DateTime<Local>;
 
     fn now(&self) -> Self::DateTime {
-        Local::now()
+        self.now.unwrap_or_else(Local::now)
     }
 
     fn parse_expression(&self, expr: TimeExpression) -> Result<Self::DateTime> {
@@ -505,5 +542,5 @@ impl TimeParser for ChronoProvider {
 /// - The resulting time is ambiguous due to DST transitions
 pub fn parse_to_datetime(input: &str, language: Language) -> Result<DateTime<Local>> {
     let expr = temps_core::parse(input, language)?;
-    ChronoProvider.parse_expression(expr)
+    ChronoProvider::new().parse_expression(expr)
 }

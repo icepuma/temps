@@ -151,7 +151,7 @@ fn main() {
     println!("\n7. Using ChronoProvider Directly:");
     println!("---------------------------------");
 
-    let provider = ChronoProvider;
+    let provider = ChronoProvider::new();
     let now = provider.now();
     println!("  Current time: {}", now.format("%Y-%m-%d %H:%M:%S %Z"));
 

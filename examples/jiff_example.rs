@@ -153,7 +153,7 @@ fn main() {
     println!("\n7. Using JiffProvider Directly:");
     println!("---------------------------------");
 
-    let provider = JiffProvider;
+    let provider = JiffProvider::new();
     let now = provider.now();
     println!("  Current time: {now}");
 
