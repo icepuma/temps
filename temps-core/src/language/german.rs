@@ -4,7 +4,8 @@ use crate::{
     DayReference, DayTime, Direction, LanguageParser, RelativeTime, Result, StandardDate, Time,
     TimeExpression, TimeUnit, Weekday, WeekdayModifier,
     common::{
-        ParserError, digit_number, four_digit_number, iso_datetime, keyword_ci, two_digit_number,
+        ParserError, digit_number, four_digit_number, iso_datetime, keyword_ci, keywords,
+        keywords_ci, longest, two_digit_number,
     },
     error::rich_errors_to_temps_error,
     time_utils,
@@ -26,120 +27,98 @@ fn whitespace_required<'a>() -> impl Parser<'a, &'a str, (), ParserError<'a>> + 
 }
 
 fn number<'a>() -> impl Parser<'a, &'a str, i64, ParserError<'a>> + Clone {
+    // Source order is irrelevant: `keywords` tries the longest keyword first.
     choice((
         digit_number(),
-        choice((
-            just("einem").to(1),
-            just("einer").to(1),
-            just("einen").to(1),
-            just("eine").to(1),
-            just("ein").to(1),
-        )),
-        choice((
-            just("zwei").to(2),
-            just("drei").to(3),
-            just("vier").to(4),
-            just("fünf").to(5),
-            just("sechs").to(6),
-        )),
-        choice((
-            just("sieben").to(7),
-            just("acht").to(8),
-            just("neun").to(9),
-            just("zehn").to(10),
-        )),
+        keywords([
+            ("ein", 1i64),
+            ("eine", 1),
+            ("einem", 1),
+            ("einen", 1),
+            ("einer", 1),
+            ("zwei", 2),
+            ("drei", 3),
+            ("vier", 4),
+            ("fünf", 5),
+            ("sechs", 6),
+            ("sieben", 7),
+            ("acht", 8),
+            ("neun", 9),
+            ("zehn", 10),
+        ]),
     ))
     .labelled("Zahl")
 }
 
 fn time_unit<'a>() -> impl Parser<'a, &'a str, TimeUnit, ParserError<'a>> + Clone {
     choice((
-        choice((
-            just("Sekunden").to(TimeUnit::Second),
-            just("Sekunde").to(TimeUnit::Second),
-            keyword_ci("sek").to(TimeUnit::Second),
-        )),
-        choice((
-            just("Minuten").to(TimeUnit::Minute),
-            just("Minute").to(TimeUnit::Minute),
-            keyword_ci("min").to(TimeUnit::Minute),
-        )),
-        choice((
-            just("Stunden").to(TimeUnit::Hour),
-            just("Stunde").to(TimeUnit::Hour),
-            keyword_ci("std").to(TimeUnit::Hour),
-        )),
-        choice((
-            just("Tagen").to(TimeUnit::Day),
-            just("Tage").to(TimeUnit::Day),
-            just("Tag").to(TimeUnit::Day),
-        )),
-        choice((
-            just("Wochen").to(TimeUnit::Week),
-            just("Woche").to(TimeUnit::Week),
-        )),
-        choice((
-            just("Monaten").to(TimeUnit::Month),
-            just("Monate").to(TimeUnit::Month),
-            just("Monat").to(TimeUnit::Month),
-        )),
-        choice((
-            just("Jahren").to(TimeUnit::Year),
-            just("Jahre").to(TimeUnit::Year),
-            just("Jahr").to(TimeUnit::Year),
-        )),
+        // Nouns keep their capitalisation; abbreviations stay case-insensitive.
+        keywords([
+            ("Sekunde", TimeUnit::Second),
+            ("Sekunden", TimeUnit::Second),
+            ("Minute", TimeUnit::Minute),
+            ("Minuten", TimeUnit::Minute),
+            ("Stunde", TimeUnit::Hour),
+            ("Stunden", TimeUnit::Hour),
+            ("Tag", TimeUnit::Day),
+            ("Tage", TimeUnit::Day),
+            ("Tagen", TimeUnit::Day),
+            ("Woche", TimeUnit::Week),
+            ("Wochen", TimeUnit::Week),
+            ("Monat", TimeUnit::Month),
+            ("Monate", TimeUnit::Month),
+            ("Monaten", TimeUnit::Month),
+            ("Jahr", TimeUnit::Year),
+            ("Jahre", TimeUnit::Year),
+            ("Jahren", TimeUnit::Year),
+        ]),
+        keywords_ci([
+            ("sek", TimeUnit::Second),
+            ("min", TimeUnit::Minute),
+            ("std", TimeUnit::Hour),
+        ]),
     ))
     .labelled("Zeiteinheit")
 }
 
 fn weekday<'a>() -> impl Parser<'a, &'a str, Weekday, ParserError<'a>> + Clone {
     choice((
-        choice((
-            just("Montag").to(Weekday::Monday),
-            keyword_ci("mo").to(Weekday::Monday),
-        )),
-        choice((
-            just("Dienstag").to(Weekday::Tuesday),
-            keyword_ci("di").to(Weekday::Tuesday),
-        )),
-        choice((
-            just("Mittwoch").to(Weekday::Wednesday),
-            keyword_ci("mi").to(Weekday::Wednesday),
-        )),
-        choice((
-            just("Donnerstag").to(Weekday::Thursday),
-            keyword_ci("do").to(Weekday::Thursday),
-        )),
-        choice((
-            just("Freitag").to(Weekday::Friday),
-            keyword_ci("fr").to(Weekday::Friday),
-        )),
-        choice((
-            just("Samstag").to(Weekday::Saturday),
-            keyword_ci("sa").to(Weekday::Saturday),
-        )),
-        choice((
-            just("Sonntag").to(Weekday::Sunday),
-            keyword_ci("so").to(Weekday::Sunday),
-        )),
+        keywords([
+            ("Montag", Weekday::Monday),
+            ("Dienstag", Weekday::Tuesday),
+            ("Mittwoch", Weekday::Wednesday),
+            ("Donnerstag", Weekday::Thursday),
+            ("Freitag", Weekday::Friday),
+            ("Samstag", Weekday::Saturday),
+            ("Sonntag", Weekday::Sunday),
+        ]),
+        keywords_ci([
+            ("mo", Weekday::Monday),
+            ("di", Weekday::Tuesday),
+            ("mi", Weekday::Wednesday),
+            ("do", Weekday::Thursday),
+            ("fr", Weekday::Friday),
+            ("sa", Weekday::Saturday),
+            ("so", Weekday::Sunday),
+        ]),
     ))
     .labelled("Wochentag")
 }
 
 fn day_shortcuts<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
-    choice((
-        keyword_ci("heute").to(DayReference::Today),
-        keyword_ci("gestern").to(DayReference::Yesterday),
-        keyword_ci("morgen").to(DayReference::Tomorrow),
-    ))
+    keywords_ci([
+        ("heute", DayReference::Today),
+        ("gestern", DayReference::Yesterday),
+        ("morgen", DayReference::Tomorrow),
+    ])
 }
 
 fn weekday_modifier<'a>() -> impl Parser<'a, &'a str, WeekdayModifier, ParserError<'a>> + Clone {
     choice((
-        just("letzten").to(WeekdayModifier::Last),
-        just("letzte").to(WeekdayModifier::Last),
-        just("nächsten").to(WeekdayModifier::Next),
-        just("nächste").to(WeekdayModifier::Next),
+        keyword_ci("letzten").to(WeekdayModifier::Last),
+        keyword_ci("letzte").to(WeekdayModifier::Last),
+        keyword_ci("nächsten").to(WeekdayModifier::Next),
+        keyword_ci("nächste").to(WeekdayModifier::Next),
     ))
 }
 
@@ -161,7 +140,11 @@ fn simple_weekday<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a
 }
 
 fn day_reference<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
-    choice((day_shortcuts(), modified_weekday(), simple_weekday()))
+    longest(vec![
+        day_shortcuts().boxed(),
+        modified_weekday().boxed(),
+        simple_weekday().boxed(),
+    ])
 }
 
 fn time_digits<'a>() -> impl Parser<'a, &'a str, (u8, u8, u8), ParserError<'a>> + Clone {
@@ -270,18 +253,20 @@ fn date_format<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>
 }
 
 fn parser<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> {
-    choice((
-        iso_datetime().labelled("ISO 8601 datetime"),
-        date_format().labelled("Datum (TT.MM.JJJJ)"),
-        day_at_time().labelled("Tag mit Uhrzeit"),
-        now_expr().labelled("`jetzt`"),
+    // Longest-match: see the English parser for why order must not matter.
+    longest(vec![
+        iso_datetime().labelled("ISO 8601 datetime").boxed(),
+        date_format().labelled("Datum (TT.MM.JJJJ)").boxed(),
+        day_at_time().labelled("Tag mit Uhrzeit").boxed(),
+        now_expr().labelled("`jetzt`").boxed(),
         day_reference()
             .map(TimeExpression::Day)
-            .labelled("Tagesangabe"),
-        time_expr().labelled("Uhrzeit"),
-        relative_past().labelled("`vor <n> <Einheit>`"),
-        relative_future().labelled("`in <n> <Einheit>`"),
-    ))
+            .labelled("Tagesangabe")
+            .boxed(),
+        time_expr().labelled("Uhrzeit").boxed(),
+        relative_past().labelled("`vor <n> <Einheit>`").boxed(),
+        relative_future().labelled("`in <n> <Einheit>`").boxed(),
+    ])
     .padded()
     .then_ignore(end())
 }

@@ -230,44 +230,64 @@ impl<T: TimeSource> TimeParser for TestableChronoProvider<T> {
         let now = self.now();
         match expr {
             TimeExpression::Now => Ok(now),
+            // The mock does not model clamping; the real providers cover it.
+            TimeExpression::LaterToday => Ok(now),
             TimeExpression::Relative(rel) => {
-                use chrono::{Duration, Months};
+                use chrono::Months;
 
                 match rel.unit {
-                    TimeUnit::Second => {
-                        let duration = Duration::seconds(rel.amount);
-                        match rel.direction {
-                            Direction::Past => Ok(now - duration),
-                            Direction::Future => Ok(now + duration),
+                    TimeUnit::Second | TimeUnit::Minute | TimeUnit::Hour => {
+                        let duration = match rel.unit {
+                            TimeUnit::Second => chrono::TimeDelta::try_seconds(rel.amount),
+                            TimeUnit::Minute => chrono::TimeDelta::try_minutes(rel.amount),
+                            _ => chrono::TimeDelta::try_hours(rel.amount),
                         }
+                        .ok_or_else(|| {
+                            temps_core::TempsError::arithmetic_overflow(
+                                "Relative amount is too large to represent as a date",
+                            )
+                        })?;
+                        match rel.direction {
+                            Direction::Past => now.checked_sub_signed(duration),
+                            Direction::Future => now.checked_add_signed(duration),
+                        }
+                        .ok_or_else(|| {
+                            temps_core::TempsError::arithmetic_overflow(
+                                "Relative amount is too large to represent as a date",
+                            )
+                        })
                     }
-                    TimeUnit::Minute => {
-                        let duration = Duration::minutes(rel.amount);
-                        match rel.direction {
-                            Direction::Past => Ok(now - duration),
-                            Direction::Future => Ok(now + duration),
+                    TimeUnit::Day | TimeUnit::Week => {
+                        let days = if matches!(rel.unit, TimeUnit::Week) {
+                            rel.amount.checked_mul(7)
+                        } else {
+                            Some(rel.amount)
                         }
-                    }
-                    TimeUnit::Hour => {
-                        let duration = Duration::hours(rel.amount);
-                        match rel.direction {
-                            Direction::Past => Ok(now - duration),
-                            Direction::Future => Ok(now + duration),
+                        .and_then(|d| u64::try_from(d).ok())
+                        .ok_or_else(|| {
+                            temps_core::TempsError::arithmetic_overflow(
+                                "Relative amount is too large to represent as a date",
+                            )
+                        })?;
+                        let date = match rel.direction {
+                            Direction::Past => {
+                                now.date_naive().checked_sub_days(chrono::Days::new(days))
+                            }
+                            Direction::Future => {
+                                now.date_naive().checked_add_days(chrono::Days::new(days))
+                            }
                         }
-                    }
-                    TimeUnit::Day => {
-                        let duration = Duration::days(rel.amount);
-                        match rel.direction {
-                            Direction::Past => Ok(now - duration),
-                            Direction::Future => Ok(now + duration),
-                        }
-                    }
-                    TimeUnit::Week => {
-                        let duration = Duration::weeks(rel.amount);
-                        match rel.direction {
-                            Direction::Past => Ok(now - duration),
-                            Direction::Future => Ok(now + duration),
-                        }
+                        .ok_or_else(|| {
+                            temps_core::TempsError::arithmetic_overflow(
+                                "Relative amount is too large to represent as a date",
+                            )
+                        })?;
+                        date.and_time(now.time())
+                            .and_local_timezone(chrono::Local)
+                            .earliest()
+                            .ok_or_else(|| {
+                                temps_core::TempsError::ambiguous_time("Ambiguous local time")
+                            })
                     }
                     TimeUnit::Month => {
                         let months = Months::new(rel.amount.try_into().map_err(|_| {
@@ -290,11 +310,16 @@ impl<T: TimeSource> TimeParser for TestableChronoProvider<T> {
                         }
                     }
                     TimeUnit::Year => {
-                        let months = Months::new((rel.amount * 12).try_into().map_err(|_| {
-                            temps_core::TempsError::date_calculation(
-                                "Year amount must be a positive number",
-                            )
-                        })?);
+                        let months = Months::new(
+                            rel.amount
+                                .checked_mul(12)
+                                .and_then(|m| u32::try_from(m).ok())
+                                .ok_or_else(|| {
+                                    temps_core::TempsError::arithmetic_overflow(
+                                        "Relative amount is too large to represent as a date",
+                                    )
+                                })?,
+                        );
 
                         match rel.direction {
                             Direction::Past => now.checked_sub_months(months).ok_or_else(|| {
@@ -667,15 +692,13 @@ fn test_chrono_provider_rejects_invalid_programmatic_inputs() {
         second: Some(0),
         nanosecond: None,
         timezone: Some(Timezone::Offset {
-            hours: -12,
-            minutes: 30,
+            total_minutes: -750,
         }),
     });
     assert!(matches!(
         provider.parse_expression(invalid_timezone),
         Err(TempsError::InvalidTimezoneOffset {
-            hours: -12,
-            minutes: 30
+            total_minutes: -750
         })
     ));
 

@@ -518,10 +518,7 @@ fn test_iso_datetime_parsing() {
                     assert_eq!(abs.second, Some(0));
                     assert_eq!(
                         abs.timezone,
-                        Some(crate::Timezone::Offset {
-                            hours: 2,
-                            minutes: 0
-                        })
+                        Some(crate::Timezone::Offset { total_minutes: 120 })
                     );
                 }
                 "2024-01-15T14:30:00-05:00" => {
@@ -534,8 +531,7 @@ fn test_iso_datetime_parsing() {
                     assert_eq!(
                         abs.timezone,
                         Some(crate::Timezone::Offset {
-                            hours: -5,
-                            minutes: 0
+                            total_minutes: -300
                         })
                     );
                 }
@@ -604,10 +600,7 @@ fn test_iso_datetime_parsing() {
                     assert_eq!(abs.second, Some(0));
                     assert_eq!(
                         abs.timezone,
-                        Some(crate::Timezone::Offset {
-                            hours: 2,
-                            minutes: 0
-                        })
+                        Some(crate::Timezone::Offset { total_minutes: 120 })
                     );
                 }
                 "2024-01-15T14:30:00-05:00" => {
@@ -620,8 +613,7 @@ fn test_iso_datetime_parsing() {
                     assert_eq!(
                         abs.timezone,
                         Some(crate::Timezone::Offset {
-                            hours: -5,
-                            minutes: 0
+                            total_minutes: -300
                         })
                     );
                 }
@@ -644,6 +636,20 @@ fn test_iso_datetime_parsing() {
 }
 
 #[test]
+fn test_parser_accepts_negative_sub_hour_offset() {
+    // RFC 3339 permits offsets between -00:01 and -00:59; the sign has to live
+    // on the offset as a whole, not on its hour component.
+    let parsed = parse("2024-01-15T23:59:00-00:30", Language::English).unwrap();
+    match parsed {
+        TimeExpression::Absolute(abs) => assert_eq!(
+            abs.timezone,
+            Some(crate::Timezone::Offset { total_minutes: -30 })
+        ),
+        other => panic!("expected an absolute datetime, got {other:?}"),
+    }
+}
+
+#[test]
 fn test_parser_rejects_invalid_iso_datetime_components() {
     let test_cases = vec![
         "2023-02-29",
@@ -655,7 +661,6 @@ fn test_parser_rejects_invalid_iso_datetime_components() {
         "2024-01-15T23:59:60",
         "2024-01-15T23:59:00+14:30",
         "2024-01-15T23:59:00-12:30",
-        "2024-01-15T23:59:00-00:30",
     ];
 
     for input in test_cases {
@@ -672,11 +677,11 @@ fn test_parser_rejects_invalid_iso_datetime_components() {
 
 #[test]
 fn test_timezone_offset_seconds_preserve_negative_minutes() {
-    assert_eq!(time_utils::calculate_timezone_offset_seconds(5, 30), 19_800);
-    assert_eq!(
-        time_utils::calculate_timezone_offset_seconds(-5, 30),
-        -19_800
-    );
+    assert_eq!(time_utils::calculate_timezone_offset_seconds(330), 19_800);
+    assert_eq!(time_utils::calculate_timezone_offset_seconds(-330), -19_800);
+    // A negative sub-hour offset keeps its sign, which a split hour/minute
+    // pair could not represent.
+    assert_eq!(time_utils::calculate_timezone_offset_seconds(-30), -1_800);
 }
 
 #[test]
@@ -1769,7 +1774,7 @@ fn test_weekend_refs_english() {
             "this weekend",
             TimeExpression::Day(DayReference::Weekday {
                 day: Weekday::Saturday,
-                modifier: None,
+                modifier: Some(WeekdayModifier::This),
             }),
         ),
         (
@@ -1859,14 +1864,7 @@ fn test_standalone_expressions_english() {
                 direction: Direction::Future,
             }),
         ),
-        (
-            "later today",
-            TimeExpression::Relative(RelativeTime {
-                amount: 2,
-                unit: TimeUnit::Hour,
-                direction: Direction::Future,
-            }),
-        ),
+        ("later today", TimeExpression::LaterToday),
     ];
 
     for (input, expected) in test_cases {
@@ -1888,11 +1886,11 @@ fn test_the_day_expressions_english() {
         ),
         (
             "the day before yesterday",
-            TimeExpression::Relative(RelativeTime {
-                amount: 2,
-                unit: TimeUnit::Day,
-                direction: Direction::Past,
-            }),
+            TimeExpression::Day(DayReference::DayBeforeYesterday),
+        ),
+        (
+            "day before yesterday",
+            TimeExpression::Day(DayReference::DayBeforeYesterday),
         ),
     ];
 

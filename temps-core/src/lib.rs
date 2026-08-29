@@ -84,6 +84,10 @@ pub enum TimeExpression {
     Date(StandardDate),
     /// A day with a specific time (e.g., "tomorrow at 3:30 pm")
     DayTime(DayTime),
+    /// A short way into the future, clamped so it cannot leave today
+    /// (e.g., "later today"). Resolves to `now + 2h`, or the last second of
+    /// today if that would cross midnight.
+    LaterToday,
 }
 
 /// Represents a time relative to the current moment.
@@ -182,21 +186,26 @@ pub struct AbsoluteTime {
 /// let utc = Timezone::Utc;
 ///
 /// // Offset timezone ("+02:00")
-/// let offset = Timezone::Offset { hours: 2, minutes: 0 };
+/// let offset = Timezone::Offset { total_minutes: 120 };
 ///
 /// // Negative offset ("-05:30")
-/// let negative = Timezone::Offset { hours: -5, minutes: 30 };
+/// let negative = Timezone::Offset { total_minutes: -330 };
+///
+/// // Negative sub-hour offset ("-00:30")
+/// let half_hour_west = Timezone::Offset { total_minutes: -30 };
 /// ```
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Timezone {
     /// UTC timezone (represented as "Z" in ISO format)
     Utc,
-    /// Timezone offset from UTC
+    /// Timezone offset from UTC, in minutes east of UTC.
+    ///
+    /// A single signed field so that negative sub-hour offsets such as
+    /// `-00:30` are representable; a split hour/minute pair cannot carry the
+    /// sign when the hour component is zero.
     Offset {
-        /// Hours offset (-12 to +14)
-        hours: i8,
-        /// Minutes offset (0-59)
-        minutes: u8,
+        /// Offset from UTC in minutes, from -720 (-12:00) to +840 (+14:00)
+        total_minutes: i16,
     },
 }
 
@@ -230,6 +239,8 @@ pub enum DayReference {
     Yesterday,
     /// Tomorrow's date
     Tomorrow,
+    /// The day before yesterday's date
+    DayBeforeYesterday,
     /// Day after tomorrow's date
     DayAfterTomorrow,
     /// A specific weekday
@@ -399,6 +410,9 @@ pub enum Weekday {
 pub enum WeekdayModifier {
     Last,
     Next,
+    /// The occurrence within the current Monday-to-Sunday week, which may be
+    /// in the past (e.g. "this weekend" asked on a Sunday).
+    This,
 }
 
 /// AM/PM indicator for 12-hour time format.
@@ -541,6 +555,9 @@ pub mod errors {
     /// Error message for year calculation overflow
     pub const ERR_YEAR_OVERFLOW: &str = "Year calculation overflow";
 
+    /// Error message for a relative amount too large for the backend to represent
+    pub const ERR_AMOUNT_OUT_OF_RANGE: &str = "Relative amount is too large to represent as a date";
+
     /// Error message for invalid date
     pub const ERR_INVALID_DATE: &str = "Invalid date";
 
@@ -576,8 +593,14 @@ pub mod errors {
 
     /// Format error message for invalid timezone offset
     #[must_use]
-    pub fn format_invalid_timezone_offset(hours: i8, minutes: u8) -> String {
-        format!("Invalid timezone offset: {hours}:{minutes}")
+    pub fn format_invalid_timezone_offset(total_minutes: i16) -> String {
+        let sign = if total_minutes < 0 { '-' } else { '+' };
+        let magnitude = total_minutes.unsigned_abs();
+        format!(
+            "Invalid timezone offset: {sign}{:02}:{:02}",
+            magnitude / 60,
+            magnitude % 60
+        )
     }
 }
 
@@ -586,10 +609,7 @@ pub mod errors {
 pub mod time_utils {
     //! Time conversion and calculation utilities
 
-    use crate::{
-        Meridiem, Timezone, WeekdayModifier,
-        constants::{SECONDS_PER_HOUR, SECONDS_PER_MINUTE},
-    };
+    use crate::{Meridiem, Timezone, WeekdayModifier, constants::SECONDS_PER_MINUTE};
 
     /// Convert 12-hour time format to 24-hour format
     ///
@@ -613,7 +633,9 @@ pub mod time_utils {
                 }
             }
             Some(Meridiem::PM) => {
-                if hour == 12 {
+                if hour >= 12 {
+                    // 12 PM is noon; anything above 12 is not a valid 12-hour
+                    // clock hour, so pass it through rather than overflowing.
                     hour
                 } else {
                     hour + 12
@@ -627,16 +649,8 @@ pub mod time_utils {
     ///
     /// Uses saturating arithmetic to prevent overflow
     #[must_use]
-    pub fn calculate_timezone_offset_seconds(hours: i8, minutes: u8) -> i32 {
-        let hour_seconds = i32::from(hours).saturating_mul(SECONDS_PER_HOUR);
-        let minute_seconds = i32::from(minutes).saturating_mul(SECONDS_PER_MINUTE);
-        let minute_seconds = if hours < 0 {
-            -minute_seconds
-        } else {
-            minute_seconds
-        };
-
-        hour_seconds.saturating_add(minute_seconds)
+    pub fn calculate_timezone_offset_seconds(total_minutes: i16) -> i32 {
+        i32::from(total_minutes).saturating_mul(SECONDS_PER_MINUTE)
     }
 
     /// Check whether the date components form a real calendar date.
@@ -673,15 +687,7 @@ pub mod time_utils {
     pub fn is_valid_timezone_offset(offset: Timezone) -> bool {
         match offset {
             Timezone::Utc => true,
-            Timezone::Offset { hours, minutes } => {
-                minutes <= 59
-                    && match hours {
-                        -12 => minutes == 0,
-                        -11..=13 => true,
-                        14 => minutes == 0,
-                        _ => false,
-                    }
-            }
+            Timezone::Offset { total_minutes } => (-720..=840).contains(&total_minutes),
         }
     }
 
@@ -717,6 +723,10 @@ pub mod time_utils {
                 } else {
                     7 + days_diff
                 }
+            }
+            Some(WeekdayModifier::This) => {
+                // Same Monday-to-Sunday week, looking backwards if already passed
+                days_diff
             }
             Some(WeekdayModifier::Last) => {
                 // Previous occurrence (not including today)
@@ -767,12 +777,160 @@ pub mod common {
         for c in chars {
             parser = parser.then_ignore(char_ci(c)).boxed();
         }
+
+        // Require a word boundary after keywords that end in a word character,
+        // so `keyword_ci("day")` cannot match inside "days" and `keyword_ci("m")`
+        // cannot match inside "min". Without this, matching is pure prefix
+        // matching and every `choice` has to be hand-ordered longest-first --
+        // a convention that fails silently when it is broken.
+        //
+        // Keywords ending in punctuation (`a.m.`) need no such check.
+        if target.chars().last().is_some_and(is_word_char) {
+            parser = parser.then_ignore(word_boundary()).boxed();
+        }
+
         parser.labelled(target)
     }
 
+    /// Characters that may not directly follow a word-like keyword.
+    fn is_word_char(c: char) -> bool {
+        c.is_alphanumeric() || c == '_'
+    }
+
+    /// Succeeds without consuming input when the next character cannot continue
+    /// a word, or at end of input.
+    fn word_boundary<'a>() -> impl Parser<'a, &'a str, (), ParserError<'a>> + Clone {
+        any()
+            .filter(|c: &char| !is_word_char(*c))
+            .ignored()
+            .rewind()
+            .or(end())
+    }
+
+    /// Try every alternative from the same input position and keep whichever
+    /// consumed the most.
+    ///
+    /// `choice` commits to the first alternative that succeeds and never
+    /// re-enters it, so a shorter match shadows a longer one and a later
+    /// failure cannot recover. Longest-match makes source order irrelevant, and
+    /// unlike sorting a keyword list it works between alternatives of any
+    /// shape, not just plain keywords.
+    ///
+    /// Every alternative is run, so reserve this for alternations where the
+    /// shadowing risk is real rather than using it as a blanket `choice`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `parsers` is empty.
+    pub fn longest<'a, T>(
+        parsers: Vec<chumsky::Boxed<'a, 'a, &'a str, T, ParserError<'a>>>,
+    ) -> impl Parser<'a, &'a str, T, ParserError<'a>> + Clone
+    where
+        T: 'a,
+    {
+        assert!(
+            !parsers.is_empty(),
+            "longest() needs at least one alternative"
+        );
+        let parsers = std::rc::Rc::new(parsers);
+
+        custom(move |inp| {
+            let start = inp.cursor();
+            let mut best: Option<(usize, usize)> = None;
+            let mut first_err: Option<Rich<'a, char>> = None;
+
+            for (index, parser) in parsers.iter().enumerate() {
+                let checkpoint = inp.save();
+                match inp.parse(parser.clone()) {
+                    Ok(_) => {
+                        let consumed = inp.slice_since(&start..).len();
+                        if best.is_none_or(|(best_len, _)| consumed > best_len) {
+                            best = Some((consumed, index));
+                        }
+                    }
+                    Err(err) => {
+                        if first_err.is_none() {
+                            first_err = Some(err);
+                        }
+                    }
+                }
+                // Always return to the start so the next alternative sees the
+                // same input.
+                inp.rewind(checkpoint);
+            }
+
+            match best {
+                // Re-run the winner to actually consume its input. Parsers are
+                // pure, so this yields the same value.
+                Some((_, index)) => inp.parse(parsers[index].clone()),
+                None => Err(first_err.expect("a non-empty alternation always produces an error")),
+            }
+        })
+    }
+
+    /// Case-**sensitive** keyword with the same word-boundary rule as
+    /// [`keyword_ci`], for languages where capitalisation is meaningful.
+    pub fn keyword_cs<'a>(
+        target: &'static str,
+    ) -> impl Parser<'a, &'a str, (), ParserError<'a>> + Clone {
+        let mut parser: chumsky::Boxed<'a, 'a, &'a str, (), ParserError<'a>> =
+            just(target).ignored().boxed();
+        if target.chars().last().is_some_and(is_word_char) {
+            parser = parser.then_ignore(word_boundary()).boxed();
+        }
+        parser.labelled(target)
+    }
+
+    /// Case-sensitive counterpart of [`keywords_ci`], longest keyword first.
+    pub fn keywords<'a, T>(
+        pairs: impl IntoIterator<Item = (&'static str, T)>,
+    ) -> impl Parser<'a, &'a str, T, ParserError<'a>> + Clone
+    where
+        T: Clone + 'a,
+    {
+        let mut pairs: Vec<(&'static str, T)> = pairs.into_iter().collect();
+        pairs.sort_by_key(|(kw, _)| std::cmp::Reverse(kw.chars().count()));
+
+        let mut iter = pairs.into_iter();
+        let (first_kw, first_val) = iter.next().expect("keyword set must be non-empty");
+        let mut parser: chumsky::Boxed<'a, 'a, &'a str, T, ParserError<'a>> =
+            keyword_cs(first_kw).to(first_val).boxed();
+        for (kw, val) in iter {
+            parser = parser.or(keyword_cs(kw).to(val)).boxed();
+        }
+        parser
+    }
+
+    /// Build a case-insensitive alternation over `(keyword, value)` pairs,
+    /// trying the longest keyword first.
+    ///
+    /// `choice` commits to the first alternative that succeeds and never
+    /// re-enters it, so a shorter keyword listed before a longer one that
+    /// shares its prefix silently shadows it — `"a couple"` swallowing the
+    /// start of `"a couple of"` leaves a remainder nothing can parse. Sorting
+    /// here makes the source order irrelevant instead of load-bearing.
+    pub fn keywords_ci<'a, T>(
+        pairs: impl IntoIterator<Item = (&'static str, T)>,
+    ) -> impl Parser<'a, &'a str, T, ParserError<'a>> + Clone
+    where
+        T: Clone + 'a,
+    {
+        let mut pairs: Vec<(&'static str, T)> = pairs.into_iter().collect();
+        pairs.sort_by_key(|(kw, _)| std::cmp::Reverse(kw.chars().count()));
+
+        let mut iter = pairs.into_iter();
+        let (first_kw, first_val) = iter.next().expect("keyword set must be non-empty");
+        let mut parser: chumsky::Boxed<'a, 'a, &'a str, T, ParserError<'a>> =
+            keyword_ci(first_kw).to(first_val).boxed();
+        for (kw, val) in iter {
+            parser = parser.or(keyword_ci(kw).to(val)).boxed();
+        }
+        parser
+    }
+
     fn char_ci<'a>(target: char) -> chumsky::Boxed<'a, 'a, &'a str, char, ParserError<'a>> {
-        let lower = target.to_ascii_lowercase();
-        let upper = target.to_ascii_uppercase();
+        let lower = target.to_lowercase().next().unwrap_or(target);
+        let upper = target.to_uppercase().next().unwrap_or(target);
         if lower == upper {
             just(target).boxed()
         } else {
@@ -829,16 +987,17 @@ pub mod common {
             .then(just(':').ignore_then(two_digit_number()).or_not())
             .try_map(|((sign, hours), minutes), span| {
                 let minutes = minutes.unwrap_or(0);
-                let hours = i8::try_from(hours)
-                    .map_err(|_| Rich::custom(span, "timezone hour offset out of range"))?;
-                let signed_hours = if sign == '+' { hours } else { -hours };
-                let offset = Timezone::Offset {
-                    hours: signed_hours,
-                    minutes,
-                };
+                if minutes > 59 {
+                    return Err(Rich::custom(span, "timezone minute offset out of range"));
+                }
+                let magnitude = i16::from(hours)
+                    .checked_mul(60)
+                    .and_then(|h| h.checked_add(i16::from(minutes)))
+                    .ok_or_else(|| Rich::custom(span, "timezone hour offset out of range"))?;
+                let total_minutes = if sign == '+' { magnitude } else { -magnitude };
+                let offset = Timezone::Offset { total_minutes };
 
-                let can_represent = !(sign == '-' && hours == 0 && minutes > 0);
-                if can_represent && time_utils::is_valid_timezone_offset(offset) {
+                if time_utils::is_valid_timezone_offset(offset) {
                     Ok(offset)
                 } else {
                     Err(Rich::custom(span, "invalid timezone offset"))

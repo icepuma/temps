@@ -47,11 +47,47 @@
 //! - `AmbiguousTime`: Local times that are ambiguous due to DST transitions
 //! - `InvalidDate`/`InvalidTime`: Components that are out of valid ranges
 
-use chrono::{DateTime, Datelike, Duration, Local, Months};
+use chrono::{
+    DateTime, Datelike, Days, Duration, Local, Months, NaiveDateTime, TimeDelta, TimeZone, Utc,
+};
+
+/// Resolve a naive local datetime to a concrete instant, matching the jiff
+/// backend's default `compatible` disambiguation.
+///
+/// Two cases need care:
+///
+/// * An **ambiguous** local time (a DST fall-back fold) maps to two instants.
+///   chrono's `LocalResult::Ambiguous` is not ordered by instant — `.earliest()`
+///   can hand back the *later* one — so choose explicitly by comparison.
+/// * A **nonexistent** local time (a spring-forward gap) maps to none. jiff
+///   shifts such a time forward by the gap's own width; interpreting the civil
+///   time with the offset in force *before* the gap does exactly that, and works
+///   for any width — including whole days skipped at the date line, where a
+///   fixed-size probe would give up.
+fn resolve_local(naive: NaiveDateTime) -> Option<DateTime<Local>> {
+    use chrono::offset::LocalResult;
+    match naive.and_local_timezone(Local) {
+        LocalResult::Single(dt) => {
+            Some(Utc.from_utc_datetime(&dt.naive_utc()).with_timezone(&Local))
+        }
+        LocalResult::Ambiguous(a, b) => Some(if a <= b { a } else { b }),
+        LocalResult::None => {
+            let pre_gap_offset = (1..=3).find_map(|days| {
+                naive
+                    .checked_sub_days(Days::new(days))?
+                    .and_local_timezone(Local)
+                    .earliest()
+                    .map(|dt| *dt.offset())
+            })?;
+            let utc = naive.checked_sub_offset(pre_gap_offset)?;
+            Some(Utc.from_utc_datetime(&utc).with_timezone(&Local))
+        }
+    }
+}
 use temps_core::{
     DayReference, Direction, Language, Result, TempsError, TimeExpression, TimeParser, TimeUnit,
     Weekday,
-    constants::MONTHS_PER_YEAR,
+    constants::{DAYS_PER_WEEK, MONTHS_PER_YEAR},
     errors::*,
     time_utils::{
         calculate_timezone_offset_seconds, calculate_weekday_offset, convert_12_to_24_hour,
@@ -95,14 +131,16 @@ impl TimeParser for ChronoProvider {
 
                 let now = self.now();
 
+                if rel.amount == 0 {
+                    return Ok(now);
+                }
+
                 // Handle months and years separately for proper date arithmetic
                 match rel.unit {
                     TimeUnit::Month => {
-                        let months = Months::new(
-                            rel.amount
-                                .try_into()
-                                .map_err(|_| TempsError::date_calculation(ERR_MONTH_POSITIVE))?,
-                        );
+                        let months = Months::new(rel.amount.try_into().map_err(|_| {
+                            TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE)
+                        })?);
 
                         match rel.direction {
                             Direction::Past => now
@@ -119,11 +157,9 @@ impl TimeParser for ChronoProvider {
                             .amount
                             .checked_mul(MONTHS_PER_YEAR as i64)
                             .ok_or_else(|| TempsError::arithmetic_overflow(ERR_YEAR_OVERFLOW))?;
-                        let months = Months::new(
-                            months_count
-                                .try_into()
-                                .map_err(|_| TempsError::date_calculation(ERR_YEAR_POSITIVE))?,
-                        );
+                        let months = Months::new(months_count.try_into().map_err(|_| {
+                            TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE)
+                        })?);
 
                         match rel.direction {
                             Direction::Past => now
@@ -134,21 +170,45 @@ impl TimeParser for ChronoProvider {
                                 .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID)),
                         }
                     }
-                    _ => {
-                        // Use Duration for time units that have fixed lengths
-                        let duration = match rel.unit {
-                            TimeUnit::Second => Duration::seconds(rel.amount),
-                            TimeUnit::Minute => Duration::minutes(rel.amount),
-                            TimeUnit::Hour => Duration::hours(rel.amount),
-                            TimeUnit::Day => Duration::days(rel.amount),
-                            TimeUnit::Week => Duration::weeks(rel.amount),
-                            _ => unreachable!(), // Month and Year handled above
-                        };
-
-                        match rel.direction {
-                            Direction::Past => Ok(now - duration),
-                            Direction::Future => Ok(now + duration),
+                    TimeUnit::Day | TimeUnit::Week => {
+                        // Calendar-aware, matching the jiff backend: "in 3 days"
+                        // keeps the wall-clock time across a DST transition.
+                        let days = if matches!(rel.unit, TimeUnit::Week) {
+                            rel.amount.checked_mul(i64::from(DAYS_PER_WEEK))
+                        } else {
+                            Some(rel.amount)
                         }
+                        .and_then(|d| u64::try_from(d).ok())
+                        .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
+
+                        let date = match rel.direction {
+                            Direction::Past => now.date_naive().checked_sub_days(Days::new(days)),
+                            Direction::Future => now.date_naive().checked_add_days(Days::new(days)),
+                        }
+                        .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
+
+                        let naive = date.and_time(now.time());
+                        resolve_local(naive)
+                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
+                    }
+                    _ => {
+                        // Fixed-length units. Use the fallible constructors and a
+                        // checked add: a large parsed amount must be an error, not
+                        // a panic.
+                        let duration = match rel.unit {
+                            TimeUnit::Second => TimeDelta::try_seconds(rel.amount),
+                            TimeUnit::Minute => TimeDelta::try_minutes(rel.amount),
+                            TimeUnit::Hour => TimeDelta::try_hours(rel.amount),
+                            _ => unreachable!(), // Day/Week/Month/Year handled above
+                        }
+                        .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
+
+                        let shifted = match rel.direction {
+                            Direction::Past => now.checked_sub_signed(duration),
+                            Direction::Future => now.checked_add_signed(duration),
+                        };
+                        shifted
+                            .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))
                     }
                 }
             }
@@ -159,7 +219,19 @@ impl TimeParser for ChronoProvider {
                     NaiveDate::from_ymd_opt(abs.year as i32, abs.month as u32, abs.day as u32)
                         .ok_or_else(|| TempsError::invalid_date(abs.year, abs.month, abs.day))?;
 
-                let datetime = if let (Some(hour), Some(minute)) = (abs.hour, abs.minute) {
+                if abs.hour.is_none() && abs.minute.is_some() {
+                    // A minute without an hour is not a time we can honour; say so
+                    // rather than silently falling through to midnight.
+                    return Err(TempsError::invalid_time(
+                        0,
+                        abs.minute.unwrap_or(0),
+                        abs.second.unwrap_or(0),
+                    ));
+                }
+
+                let datetime = if let Some(hour) = abs.hour {
+                    // Default only the components below the one supplied.
+                    let minute = abs.minute.unwrap_or(0);
                     let time = NaiveTime::from_hms_nano_opt(
                         hour as u32,
                         minute as u32,
@@ -176,19 +248,17 @@ impl TimeParser for ChronoProvider {
                         Some(temps_core::Timezone::Utc) => {
                             Utc.from_utc_datetime(&naive_dt).with_timezone(&Local)
                         }
-                        Some(temps_core::Timezone::Offset { hours, minutes }) => {
+                        Some(temps_core::Timezone::Offset { total_minutes }) => {
                             if !is_valid_timezone_offset(temps_core::Timezone::Offset {
-                                hours: *hours,
-                                minutes: *minutes,
+                                total_minutes: *total_minutes,
                             }) {
-                                return Err(TempsError::invalid_timezone_offset(*hours, *minutes));
+                                return Err(TempsError::invalid_timezone_offset(*total_minutes));
                             }
 
-                            let offset_seconds =
-                                calculate_timezone_offset_seconds(*hours, *minutes);
+                            let offset_seconds = calculate_timezone_offset_seconds(*total_minutes);
                             let offset =
                                 FixedOffset::east_opt(offset_seconds).ok_or_else(|| {
-                                    TempsError::invalid_timezone_offset(*hours, *minutes)
+                                    TempsError::invalid_timezone_offset(*total_minutes)
                                 })?;
                             offset
                                 .from_local_datetime(&naive_dt)
@@ -198,9 +268,7 @@ impl TimeParser for ChronoProvider {
                         }
                         None => {
                             // No timezone specified, treat as local time
-                            Local
-                                .from_local_datetime(&naive_dt)
-                                .single()
+                            resolve_local(naive_dt)
                                 .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))?
                         }
                     }
@@ -209,9 +277,7 @@ impl TimeParser for ChronoProvider {
                     let midnight = date
                         .and_hms_opt(0, 0, 0)
                         .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                    Local
-                        .from_local_datetime(&midnight)
-                        .single()
+                    resolve_local(midnight)
                         .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))?
                 };
 
@@ -225,42 +291,47 @@ impl TimeParser for ChronoProvider {
                             .date_naive()
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        midnight
-                            .and_local_timezone(Local)
-                            .single()
+                        resolve_local(midnight)
                             .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::Yesterday => {
-                        let yesterday = now - Duration::days(1);
-                        let midnight = yesterday
+                        let midnight = now
                             .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        midnight
-                            .and_local_timezone(Local)
-                            .single()
+                        resolve_local(midnight)
                             .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::Tomorrow => {
-                        let tomorrow = now + Duration::days(1);
-                        let midnight = tomorrow
+                        let midnight = now
                             .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        midnight
-                            .and_local_timezone(Local)
-                            .single()
+                        resolve_local(midnight)
+                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
+                    }
+                    DayReference::DayBeforeYesterday => {
+                        let midnight = now
+                            .date_naive()
+                            .checked_sub_days(Days::new(2))
+                            .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?
+                            .and_hms_opt(0, 0, 0)
+                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
+                        resolve_local(midnight)
                             .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::DayAfterTomorrow => {
-                        let day_after = now + Duration::days(2);
-                        let midnight = day_after
+                        let midnight = now
                             .date_naive()
+                            .checked_add_days(Days::new(2))
+                            .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        midnight
-                            .and_local_timezone(Local)
-                            .single()
+                        resolve_local(midnight)
                             .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::Weekday { day, modifier } => {
@@ -280,15 +351,18 @@ impl TimeParser for ChronoProvider {
 
                         let days_to_add =
                             calculate_weekday_offset(current_offset, target_offset, modifier);
-                        let target_date = now + Duration::days(days_to_add);
+                        let base = now.date_naive();
+                        let target_date = if days_to_add >= 0 {
+                            base.checked_add_days(Days::new(days_to_add.unsigned_abs()))
+                        } else {
+                            base.checked_sub_days(Days::new(days_to_add.unsigned_abs()))
+                        }
+                        .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?;
 
                         let midnight = target_date
-                            .date_naive()
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        midnight
-                            .and_local_timezone(Local)
-                            .single()
+                        resolve_local(midnight)
                             .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                 }
@@ -305,12 +379,11 @@ impl TimeParser for ChronoProvider {
 
                 let hour = convert_12_to_24_hour(time.hour, time.meridiem.as_ref()) as u32;
 
-                Ok(now
+                let naive = now
                     .date_naive()
                     .and_hms_opt(hour, time.minute as u32, time.second as u32)
-                    .ok_or_else(|| TempsError::invalid_time(time.hour, time.minute, time.second))?
-                    .and_local_timezone(Local)
-                    .single()
+                    .ok_or_else(|| TempsError::invalid_time(time.hour, time.minute, time.second))?;
+                Ok(resolve_local(naive)
                     .ok_or_else(|| TempsError::ambiguous_time("Ambiguous local time"))?)
             }
             TimeExpression::DayTime(day_time) => {
@@ -335,7 +408,7 @@ impl TimeParser for ChronoProvider {
                     convert_12_to_24_hour(day_time.time.hour, day_time.time.meridiem.as_ref())
                         as u32;
 
-                Ok(date
+                let naive = date
                     .and_hms_opt(
                         hour,
                         day_time.time.minute as u32,
@@ -347,10 +420,35 @@ impl TimeParser for ChronoProvider {
                             day_time.time.minute,
                             day_time.time.second,
                         )
-                    })?
-                    .and_local_timezone(Local)
-                    .single()
+                    })?;
+                Ok(resolve_local(naive)
                     .ok_or_else(|| TempsError::ambiguous_time("Ambiguous local time"))?)
+            }
+            TimeExpression::LaterToday => {
+                let now = self.now();
+                let later = now
+                    .checked_add_signed(Duration::hours(2))
+                    .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
+
+                // Clamp against the true end of the local day. A fixed 23:59:59
+                // is wrong in zones where the day is cut short by a transition,
+                // and would drop sub-second precision.
+                let tomorrow = now
+                    .date_naive()
+                    .checked_add_days(Days::new(1))
+                    .and_then(|d| d.and_hms_opt(0, 0, 0))
+                    .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?;
+                let tomorrow_start = resolve_local(tomorrow)
+                    .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))?;
+
+                if later < tomorrow_start {
+                    return Ok(later);
+                }
+                let last_today = tomorrow_start
+                    .checked_sub_signed(TimeDelta::nanoseconds(1))
+                    .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?;
+                // Never resolve into the past.
+                Ok(if last_today < now { now } else { last_today })
             }
             TimeExpression::Date(date) => {
                 use chrono::NaiveDate;
@@ -358,10 +456,11 @@ impl TimeParser for ChronoProvider {
                 NaiveDate::from_ymd_opt(date.year as i32, date.month as u32, date.day as u32)
                     .ok_or_else(|| TempsError::invalid_date(date.year, date.month, date.day))?
                     .and_hms_opt(0, 0, 0)
-                    .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?
-                    .and_local_timezone(Local)
-                    .single()
-                    .ok_or_else(|| TempsError::ambiguous_time("Ambiguous local time"))
+                    .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))
+                    .and_then(|naive| {
+                        resolve_local(naive)
+                            .ok_or_else(|| TempsError::ambiguous_time("Ambiguous local time"))
+                    })
             }
         }
     }
