@@ -63,6 +63,23 @@ use temps_core::{
 /// This provider uses jiff's `Zoned` as its datetime type, providing
 /// high-precision time calculations and comprehensive timezone support.
 ///
+/// ## Upper range limit
+///
+/// `jiff::Timestamp::MAX` is `9999-12-30T22:00:00.999999999Z` — earlier than the
+/// end of year 9999 that a civil date allows — so the final hours of year 9999
+/// are out of reach here. A civil datetime resolves only when its instant lands
+/// at or before that timestamp, which makes the last accepted local datetime
+/// depend on the zone's offset: `9999-12-30T22:00:00` in UTC,
+/// `9999-12-30T17:00:00` at `-05:00`, `9999-12-31T07:00:00` at `+09:00`. Since a
+/// date-only expression resolves to local midnight, `9999-12-31` fails in UTC
+/// but succeeds in `Asia/Tokyo`.
+///
+/// Past that point, absolute expressions fail with `TempsError::BackendError`
+/// and relative ones (`in 1 day` from `9999-12-30T12:00`, say) with
+/// `TempsError::DateCalculationError`. This is a range limit of the underlying
+/// library, not a defect: `ChronoProvider` has no equivalent limit and accepts
+/// the same expressions, and it is the one place the two backends disagree.
+///
 /// ## Example
 ///
 /// ```

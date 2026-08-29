@@ -54,16 +54,26 @@ use chrono::{
 /// Resolve a naive local datetime to a concrete instant, matching the jiff
 /// backend's default `compatible` disambiguation.
 ///
-/// Two cases need care:
+/// Every `LocalResult` branch needs care, including `Single`:
 ///
-/// * An **ambiguous** local time (a DST fall-back fold) maps to two instants.
+/// * **`Single`** is normally an unremarkable local time, and re-normalising it
+///   through UTC is a no-op. It is not always unremarkable: a nonexistent local
+///   time is not reliably reported as `None`. When a spring-forward gap begins
+///   exactly at midnight, chrono returns `Single` carrying the offset from
+///   *before* the gap — in `America/Havana`, `2024-03-10 00:00:00` comes back as
+///   `Single` at `-05:00`, a wall-clock reading that never occurred, while
+///   `00:30:00` on the same date is `None`. Converting to UTC and back
+///   (`naive_utc`, then `with_timezone(&Local)`) reinterprets that instant under
+///   the offset actually in force and yields `2024-03-10 01:00:00-04:00`, the
+///   same forward shift jiff performs.
+/// * An **`Ambiguous`** local time (a DST fall-back fold) maps to two instants.
 ///   chrono's `LocalResult::Ambiguous` is not ordered by instant — `.earliest()`
 ///   can hand back the *later* one — so choose explicitly by comparison.
-/// * A **nonexistent** local time (a spring-forward gap) maps to none. jiff
-///   shifts such a time forward by the gap's own width; interpreting the civil
-///   time with the offset in force *before* the gap does exactly that, and works
-///   for any width — including whole days skipped at the date line, where a
-///   fixed-size probe would give up.
+/// * **`None`** is the ordinary report for a nonexistent local time (a
+///   spring-forward gap). jiff shifts such a time forward by the gap's own
+///   width; interpreting the civil time with the offset in force *before* the
+///   gap does exactly that, and works for any width — including whole days
+///   skipped at the date line, where a fixed-size probe would give up.
 fn resolve_local(naive: NaiveDateTime) -> Option<DateTime<Local>> {
     use chrono::offset::LocalResult;
     match naive.and_local_timezone(Local) {
