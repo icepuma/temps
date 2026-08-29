@@ -2,6 +2,7 @@
 name = "temps-chrono"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Chrono integration for temps - time and date parsing library"
 authors.workspace = true
 repository.workspace = true
@@ -10,8 +11,8 @@ license.workspace = true
 
 [dependencies]
 temps-core = { path = "../temps-core", version = "=4.0.0" }
-chrono = "=0.4.44"
+chrono = "=0.4.45"
 
 [dev-dependencies]
-mockall = "=0.14.0"
+mockall = "=0.15.0"
 temps-testhelpers = { path = "../temps-testhelpers", features = ["chrono"] }

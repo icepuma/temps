@@ -2,6 +2,7 @@
 name = "temps-core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Core functionality for temps - time and date parsing library"
 authors.workspace = true
 repository.workspace = true
@@ -11,8 +12,8 @@ license.workspace = true
 [dependencies]
 chumsky = "=0.13.0"
 ariadne = "=0.6.0"
-thiserror = "=2.0.18"
+thiserror = "=2.0.20"
 
 [dev-dependencies]
-mockall = "=0.14.0"
+mockall = "=0.15.0"
 temps-testhelpers = { path = "../temps-testhelpers" }
