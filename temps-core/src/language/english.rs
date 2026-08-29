@@ -85,6 +85,46 @@ where
     .labelled("time unit")
 }
 
+/// A unit as written, paired with how many of [`TimeUnit`] one of it is worth.
+///
+/// `TimeUnit` has no `Fortnight` variant and gains none here: a fortnight is
+/// two weeks, so the colloquial unit is carried as the ordinary
+/// [`TimeUnit::Week`] plus a multiplier that [`amount_and_unit`] applies to the
+/// parsed amount.
+fn scaled_time_unit<'t, 's: 't, I>()
+-> impl Parser<'t, I, (TimeUnit, i64), ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    choice((
+        phrases_ci([("fortnight", ()), ("fortnights", ())]).to((TimeUnit::Week, 2i64)),
+        time_unit().map(|unit| (unit, 1i64)),
+    ))
+    .labelled("time unit")
+}
+
+/// `<number> <unit>`, with a colloquial unit's multiplier already folded into
+/// the amount.
+///
+/// The multiplication is checked because the amount comes straight from user
+/// input: `in 9223372036854775807 fortnights` must be rejected as
+/// unrepresentable rather than wrap into a plausible-looking past date.
+fn amount_and_unit<'t, 's: 't, I>()
+-> impl Parser<'t, I, (i64, TimeUnit), ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    number()
+        .then_ignore(space())
+        .then(scaled_time_unit())
+        .try_map(|(amount, (unit, per_unit)), span| {
+            amount
+                .checked_mul(per_unit)
+                .map(|amount| (amount, unit))
+                .ok_or_else(|| Rich::custom(span, "amount out of range"))
+        })
+}
+
 fn weekday<'t, 's: 't, I>() -> impl Parser<'t, I, Weekday, ParserError<'t, 's>> + Clone
 where
     I: TokenInput<'t, 's>,
@@ -471,7 +511,12 @@ where
     ]))
 }
 
-/// "fortnight" = 2 weeks (future direction assumed for scheduling).
+/// Bare "fortnight" = 2 weeks (future direction assumed for scheduling).
+///
+/// This is only the standalone reading. As a *unit* — `in a fortnight`,
+/// `three fortnights ago` — a fortnight is handled by [`scaled_time_unit`],
+/// which those rules reach through their own leading token (`in`) or trailing
+/// one (`ago`), so neither can succeed on a prefix of the other.
 fn fortnight<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
 where
     I: TokenInput<'t, 's>,
@@ -554,9 +599,7 @@ fn relative_past<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserEr
 where
     I: TokenInput<'t, 's>,
 {
-    number()
-        .then_ignore(space())
-        .then(time_unit())
+    amount_and_unit()
         .then_ignore(space())
         .then_ignore(word_ci("ago"))
         .map(|(amount, unit)| {
@@ -575,9 +618,7 @@ where
 {
     word_ci("in")
         .ignore_then(space())
-        .ignore_then(number())
-        .then_ignore(space())
-        .then(time_unit())
+        .ignore_then(amount_and_unit())
         .map(|(amount, unit)| {
             TimeExpression::Relative(RelativeTime {
                 amount,
