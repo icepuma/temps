@@ -10,7 +10,7 @@ readme = "../README.md"
 license.workspace = true
 
 [dependencies]
-temps-core = { path = "../temps-core", version = "=4.0.0" }
+temps-core = { path = "../temps-core", version = "=5.0.0" }
 jiff = "=0.2.35"
 
 [dev-dependencies]

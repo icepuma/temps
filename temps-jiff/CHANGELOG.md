@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0](https://github.com/icepuma/temps/compare/temps-jiff-v4.0.0...temps-jiff-v5.0.0) - 2026-08-29
+
+### Added
+
+- *(core)* [**breaking**] add colloquial date and time expressions
+
+### Fixed
+
+- [**breaking**] correct DST, overflow and validation defects
+
+### Other
+
+- correct resolve_local's contract and record jiff's upper range limit
+- [**breaking**] make the resolution instant injectable
+- correct the install version and a non-compiling example
+- upgrade dependencies, pin toolchain and declare MSRV
+
 ## [4.0.0](https://github.com/icepuma/temps/compare/temps-jiff-v3.0.1...temps-jiff-v4.0.0) - 2026-05-14
 
 ### Other

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0](https://github.com/icepuma/temps/compare/temps-core-v4.0.0...temps-core-v5.0.0) - 2026-08-29
+
+### Added
+
+- *(core)* accept "fortnight" as a unit in relative expressions
+- *(core)* parse German "übermorgen" and "vorgestern"
+- *(core)* [**breaking**] add colloquial date and time expressions
+
+### Fixed
+
+- [**breaking**] correct DST, overflow and validation defects
+
+### Other
+
+- *(core)* add parser regressions and a checked-in behaviour corpus
+- *(core)* [**breaking**] parse over a token stream instead of raw characters
+- correct the install version and a non-compiling example
+- upgrade dependencies, pin toolchain and declare MSRV
+
 ## [4.0.0](https://github.com/icepuma/temps/compare/temps-core-v3.0.1...temps-core-v4.0.0) - 2026-05-14
 
 ### Other

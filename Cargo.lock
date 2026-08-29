@@ -550,7 +550,7 @@ dependencies = [
 
 [[package]]
 name = "temps"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "chrono",
  "jiff",
@@ -561,7 +561,7 @@ dependencies = [
 
 [[package]]
 name = "temps-chrono"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "chrono",
  "mockall",
@@ -571,7 +571,7 @@ dependencies = [
 
 [[package]]
 name = "temps-core"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "ariadne",
  "chumsky",
@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "temps-jiff"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "jiff",
  "mockall",
@@ -592,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "temps-testhelpers"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "chrono",
  "jiff",

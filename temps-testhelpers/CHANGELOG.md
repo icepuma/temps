@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0](https://github.com/icepuma/temps/compare/temps-testhelpers-v4.0.0...temps-testhelpers-v5.0.0) - 2026-08-29
+
+### Other
+
+- correct the install version and a non-compiling example
+- upgrade dependencies, pin toolchain and declare MSRV
+
 ## [4.0.0](https://github.com/icepuma/temps/compare/temps-testhelpers-v3.0.1...temps-testhelpers-v4.0.0) - 2026-05-14
 
 ### Other
