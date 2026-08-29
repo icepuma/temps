@@ -118,15 +118,19 @@ impl TimeParser for JiffProvider {
                 let now = self.now();
 
                 // Create a span based on the time unit
+                // The `try_*` builders are essential: the plain setters panic when
+                // the amount exceeds jiff's per-unit range, and `rel.amount` comes
+                // straight from user input.
                 let span = match rel.unit {
-                    TimeUnit::Second => Span::new().seconds(rel.amount),
-                    TimeUnit::Minute => Span::new().minutes(rel.amount),
-                    TimeUnit::Hour => Span::new().hours(rel.amount),
-                    TimeUnit::Day => Span::new().days(rel.amount),
-                    TimeUnit::Week => Span::new().weeks(rel.amount),
-                    TimeUnit::Month => Span::new().months(rel.amount),
-                    TimeUnit::Year => Span::new().years(rel.amount),
-                };
+                    TimeUnit::Second => Span::new().try_seconds(rel.amount),
+                    TimeUnit::Minute => Span::new().try_minutes(rel.amount),
+                    TimeUnit::Hour => Span::new().try_hours(rel.amount),
+                    TimeUnit::Day => Span::new().try_days(rel.amount),
+                    TimeUnit::Week => Span::new().try_weeks(rel.amount),
+                    TimeUnit::Month => Span::new().try_months(rel.amount),
+                    TimeUnit::Year => Span::new().try_years(rel.amount),
+                }
+                .map_err(|_| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
 
                 // Apply the span in the correct direction
                 match rel.direction {
@@ -146,7 +150,20 @@ impl TimeParser for JiffProvider {
                 let date = Date::new(year, month, day)
                     .map_err(|e| TempsError::backend_error(e.to_string(), "jiff"))?;
 
-                if let (Some(hour), Some(minute)) = (abs.hour, abs.minute) {
+                if abs.hour.is_none() && abs.minute.is_some() {
+                    // A minute without an hour is not a time we can honour; say so
+                    // rather than silently falling through to midnight.
+                    return Err(TempsError::invalid_time(
+                        0,
+                        abs.minute.unwrap_or(0),
+                        abs.second.unwrap_or(0),
+                    ));
+                }
+
+                if let Some(hour) = abs.hour {
+                    // Default only the components below the one supplied; dropping a
+                    // supplied hour would silently return local midnight instead.
+                    let minute = abs.minute.unwrap_or(0);
                     // Validate hour is in valid range (0-23)
                     if hour > 23 {
                         return Err(TempsError::invalid_time(
@@ -190,18 +207,16 @@ impl TimeParser for JiffProvider {
                                     "jiff",
                                 )
                             }),
-                        Some(temps_core::Timezone::Offset { hours, minutes }) => {
+                        Some(temps_core::Timezone::Offset { total_minutes }) => {
                             if !is_valid_timezone_offset(temps_core::Timezone::Offset {
-                                hours: *hours,
-                                minutes: *minutes,
+                                total_minutes: *total_minutes,
                             }) {
-                                return Err(TempsError::invalid_timezone_offset(*hours, *minutes));
+                                return Err(TempsError::invalid_timezone_offset(*total_minutes));
                             }
 
-                            let total_seconds = calculate_timezone_offset_seconds(*hours, *minutes);
-                            let offset = Offset::from_seconds(total_seconds).map_err(|_| {
-                                TempsError::invalid_timezone_offset(*hours, *minutes)
-                            })?;
+                            let total_seconds = calculate_timezone_offset_seconds(*total_minutes);
+                            let offset = Offset::from_seconds(total_seconds)
+                                .map_err(|_| TempsError::invalid_timezone_offset(*total_minutes))?;
 
                             datetime
                                 .to_zoned(TimeZone::fixed(offset))
@@ -246,13 +261,12 @@ impl TimeParser for JiffProvider {
                             })
                     }
                     DayReference::Yesterday => {
-                        let yesterday = now.checked_sub(Span::new().days(1)).map_err(|e| {
+                        let date = now.date().checked_sub(Span::new().days(1)).map_err(|e| {
                             TempsError::date_calculation_with_source(
                                 "Failed to calculate yesterday",
                                 e.to_string(),
                             )
                         })?;
-                        let date = yesterday.date();
                         date.at(0, 0, 0, 0)
                             .to_zoned(now.time_zone().clone())
                             .map_err(|e| {
@@ -263,13 +277,12 @@ impl TimeParser for JiffProvider {
                             })
                     }
                     DayReference::Tomorrow => {
-                        let tomorrow = now.checked_add(Span::new().days(1)).map_err(|e| {
+                        let date = now.date().checked_add(Span::new().days(1)).map_err(|e| {
                             TempsError::date_calculation_with_source(
                                 "Failed to calculate tomorrow",
                                 e.to_string(),
                             )
                         })?;
-                        let date = tomorrow.date();
                         date.at(0, 0, 0, 0)
                             .to_zoned(now.time_zone().clone())
                             .map_err(|e| {
@@ -279,14 +292,29 @@ impl TimeParser for JiffProvider {
                                 )
                             })
                     }
+                    DayReference::DayBeforeYesterday => {
+                        let date = now.date().checked_sub(Span::new().days(2)).map_err(|e| {
+                            TempsError::date_calculation_with_source(
+                                "Failed to calculate day before yesterday",
+                                e.to_string(),
+                            )
+                        })?;
+                        date.at(0, 0, 0, 0)
+                            .to_zoned(now.time_zone().clone())
+                            .map_err(|e| {
+                                TempsError::date_calculation_with_source(
+                                    "Failed to create day before yesterday's date",
+                                    e.to_string(),
+                                )
+                            })
+                    }
                     DayReference::DayAfterTomorrow => {
-                        let day_after = now.checked_add(Span::new().days(2)).map_err(|e| {
+                        let date = now.date().checked_add(Span::new().days(2)).map_err(|e| {
                             TempsError::date_calculation_with_source(
                                 "Failed to calculate day after tomorrow",
                                 e.to_string(),
                             )
                         })?;
-                        let date = day_after.date();
                         date.at(0, 0, 0, 0)
                             .to_zoned(now.time_zone().clone())
                             .map_err(|e| {
@@ -313,15 +341,15 @@ impl TimeParser for JiffProvider {
 
                         let days_to_add =
                             calculate_weekday_offset(current_offset, target_offset, modifier);
-                        let target_date = now.checked_add(Span::new().days(days_to_add));
-
-                        let target = target_date.map_err(|e| {
-                            TempsError::date_calculation_with_source(
-                                "Failed to calculate weekday",
-                                e.to_string(),
-                            )
-                        })?;
-                        let date = target.date();
+                        let date = now
+                            .date()
+                            .checked_add(Span::new().days(days_to_add))
+                            .map_err(|e| {
+                                TempsError::date_calculation_with_source(
+                                    "Failed to calculate weekday",
+                                    e.to_string(),
+                                )
+                            })?;
                         date.at(0, 0, 0, 0)
                             .to_zoned(now.time_zone().clone())
                             .map_err(|e| {
@@ -385,6 +413,36 @@ impl TimeParser for JiffProvider {
                     .map_err(|e| {
                         TempsError::backend_error(format!("Failed to create day time: {e}"), "jiff")
                     })
+            }
+            TimeExpression::LaterToday => {
+                let now = self.now();
+                let later = now.checked_add(Span::new().hours(2)).map_err(|e| {
+                    TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
+                })?;
+                // Clamp against the true end of the local day rather than a fixed
+                // 23:59:59, which need not exist and would drop sub-second precision.
+                let tomorrow_start = now
+                    .date()
+                    .tomorrow()
+                    .map_err(|e| {
+                        TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
+                    })?
+                    .at(0, 0, 0, 0)
+                    .to_zoned(now.time_zone().clone())
+                    .map_err(|e| {
+                        TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
+                    })?;
+
+                if later < tomorrow_start {
+                    return Ok(later);
+                }
+                let last_today = tomorrow_start
+                    .checked_sub(Span::new().nanoseconds(1))
+                    .map_err(|e| {
+                        TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
+                    })?;
+                // Never resolve into the past.
+                Ok(if last_today < now { now } else { last_today })
             }
             TimeExpression::Date(date) => {
                 use jiff::civil::Date;

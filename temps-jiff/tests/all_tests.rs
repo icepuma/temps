@@ -156,17 +156,24 @@ impl<T: TimeSource> TimeParser for TestableJiffProvider<T> {
         let now = self.now();
         match expr {
             TimeExpression::Now => Ok(now),
+            // The mock does not model clamping; the real providers cover it.
+            TimeExpression::LaterToday => Ok(now),
             TimeExpression::Relative(rel) => {
                 // Use JiffProvider's logic but with our mocked now
                 let span = match rel.unit {
-                    TimeUnit::Second => Span::new().seconds(rel.amount),
-                    TimeUnit::Minute => Span::new().minutes(rel.amount),
-                    TimeUnit::Hour => Span::new().hours(rel.amount),
-                    TimeUnit::Day => Span::new().days(rel.amount),
-                    TimeUnit::Week => Span::new().weeks(rel.amount),
-                    TimeUnit::Month => Span::new().months(rel.amount),
-                    TimeUnit::Year => Span::new().years(rel.amount),
-                };
+                    TimeUnit::Second => Span::new().try_seconds(rel.amount),
+                    TimeUnit::Minute => Span::new().try_minutes(rel.amount),
+                    TimeUnit::Hour => Span::new().try_hours(rel.amount),
+                    TimeUnit::Day => Span::new().try_days(rel.amount),
+                    TimeUnit::Week => Span::new().try_weeks(rel.amount),
+                    TimeUnit::Month => Span::new().try_months(rel.amount),
+                    TimeUnit::Year => Span::new().try_years(rel.amount),
+                }
+                .map_err(|_| {
+                    temps_core::TempsError::arithmetic_overflow(
+                        "Relative amount is too large to represent as a date",
+                    )
+                })?;
 
                 match rel.direction {
                     Direction::Past => now.checked_sub(span).map_err(|e| {
@@ -757,15 +764,13 @@ fn test_jiff_provider_rejects_invalid_programmatic_inputs() {
         second: Some(0),
         nanosecond: None,
         timezone: Some(Timezone::Offset {
-            hours: -12,
-            minutes: 30,
+            total_minutes: -750,
         }),
     });
     assert!(matches!(
         provider.parse_expression(invalid_timezone),
         Err(TempsError::InvalidTimezoneOffset {
-            hours: -12,
-            minutes: 30
+            total_minutes: -750
         })
     ));
 

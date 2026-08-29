@@ -99,12 +99,10 @@ pub enum TempsError {
     },
 
     /// Error for invalid timezone offset
-    #[error("Invalid timezone offset: {hours:+03}:{minutes:02}")]
+    #[error("{}", temps_core_format_offset(*total_minutes))]
     InvalidTimezoneOffset {
-        /// The hour offset (-12 to +14)
-        hours: i8,
-        /// The minute offset (0-59)
-        minutes: u8,
+        /// The offset from UTC in minutes (-720 to +840)
+        total_minutes: i16,
     },
 
     /// Error for ambiguous local time (e.g., during DST transitions)
@@ -267,8 +265,8 @@ impl TempsError {
 
     /// Creates an invalid timezone offset error
     #[must_use]
-    pub fn invalid_timezone_offset(hours: i8, minutes: u8) -> Self {
-        Self::InvalidTimezoneOffset { hours, minutes }
+    pub fn invalid_timezone_offset(total_minutes: i16) -> Self {
+        Self::InvalidTimezoneOffset { total_minutes }
     }
 
     /// Creates an ambiguous time error
@@ -334,7 +332,19 @@ pub fn rich_errors_to_temps_error(
     input: &str,
     errors: Vec<chumsky::error::Rich<'_, char>>,
 ) -> TempsError {
-    use ariadne::{Color, Label, Report, ReportKind, Source};
+    use ariadne::{Color, Config, Label, Report, ReportKind, Source};
+
+    // chumsky spans over `&str` are BYTE offsets, but ariadne's `Source`
+    // indexes by CHARACTER. Feeding one to the other mislocates the caret on
+    // any non-ASCII input and silently drops the label once the byte offset
+    // runs past the character count. Translate up front.
+    let byte_to_char = |byte: usize| -> usize {
+        input
+            .char_indices()
+            .position(|(b, _)| b >= byte)
+            .unwrap_or_else(|| input.chars().count())
+    };
+    let char_len = input.chars().count();
 
     if input.is_empty() {
         return TempsError::parse_error_with_position(
@@ -344,16 +354,22 @@ pub fn rich_errors_to_temps_error(
         );
     }
 
-    let position = errors.first().map(|e| e.span().start).unwrap_or(0);
+    let position = errors
+        .first()
+        .map(|e| byte_to_char(e.span().start))
+        .unwrap_or(0);
 
     let source_id: &str = "input";
     let mut rendered = String::new();
     for err in &errors {
         let span = err.span();
-        let range = span.start..span.end.max(span.start + 1).min(input.len().max(1));
+        let start = byte_to_char(span.start);
+        let end = byte_to_char(span.end).max(start + 1).min(char_len.max(1));
+        let range = start..end;
         let mut buf = Vec::new();
         let (headline, detail) = format_rich(err);
         let report = Report::build(ReportKind::Error, (source_id, range.clone()))
+            .with_config(Config::default().with_color(false))
             .with_message(headline)
             .with_label(
                 Label::new((source_id, range))
@@ -421,6 +437,11 @@ fn format_rich(err: &chumsky::error::Rich<'_, char>) -> (String, String) {
             ("could not parse time expression".to_string(), detail)
         }
     }
+}
+
+/// Render an offset for [`TempsError::InvalidTimezoneOffset`]'s `Display`.
+fn temps_core_format_offset(total_minutes: i16) -> String {
+    crate::errors::format_invalid_timezone_offset(total_minutes)
 }
 
 #[cfg(test)]
