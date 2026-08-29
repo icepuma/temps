@@ -40,10 +40,10 @@ let dt = parse_to_datetime("nächsten Montag", Language::German)?;
 ```toml
 [dependencies]
 # With chrono
-temps = { version = "3", features = ["chrono"] }
+temps = { version = "4", features = ["chrono"] }
 
 # With jiff
-temps = { version = "3", features = ["jiff"] }
+temps = { version = "4", features = ["jiff"] }
 ```
 
 ## Usage
@@ -126,7 +126,7 @@ use temps_core::{parse, Language, TimeExpression};
 
 let expr = parse("in 3 hours", Language::English)?;
 match expr {
-    TimeExpression::Relative(rel) => println!("{} {} {:?}", rel.amount, rel.unit, rel.direction),
+    TimeExpression::Relative(rel) => println!("{} {:?} {:?}", rel.amount, rel.unit, rel.direction),
     TimeExpression::Absolute(abs) => println!("ISO date: {:04}-{:02}-{:02}", abs.year, abs.month, abs.day),
     TimeExpression::Now => println!("Right now!"),
     TimeExpression::Day(day) => println!("Day reference: {:?}", day),
