@@ -20,9 +20,9 @@
 //!
 //! ```toml
 //! [dependencies]
-//! temps = { version = "3", features = ["chrono"] }
+//! temps = { version = "4", features = ["chrono"] }
 //! # or
-//! temps = { version = "3", features = ["jiff"] }
+//! temps = { version = "4", features = ["jiff"] }
 //! ```
 //!
 //! ## Examples
