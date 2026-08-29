@@ -2,6 +2,7 @@
 name = "temps-jiff"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Jiff integration for temps - time and date parsing library"
 authors.workspace = true
 repository.workspace = true
@@ -10,8 +11,8 @@ license.workspace = true
 
 [dependencies]
 temps-core = { path = "../temps-core", version = "=4.0.0" }
-jiff = "=0.2.24"
+jiff = "=0.2.35"
 
 [dev-dependencies]
-mockall = "=0.14.0"
+mockall = "=0.15.0"
 temps-testhelpers = { path = "../temps-testhelpers", features = ["jiff"] }
