@@ -110,10 +110,20 @@ fn day_shortcuts<'t, 's: 't, I>() -> impl Parser<'t, I, DayReference, ParserErro
 where
     I: TokenInput<'t, 's>,
 {
+    // All five are adverbs, not nouns, so they stay case-insensitive: a
+    // sentence-initial `Übermorgen` reads the same as `übermorgen`.
+    //
+    // `übermorgen` and `vorgestern` are single words rather than the phrases
+    // English needs ("the day after tomorrow"), and matching is per whole
+    // token, so neither can shadow `morgen`/`gestern` nor be shadowed by them,
+    // and `vorgestern` cannot be mistaken for the `vor <n> <Einheit>`
+    // preposition. `german_lexicon.rs` pins that.
     phrases_ci([
         ("heute", DayReference::Today),
         ("gestern", DayReference::Yesterday),
         ("morgen", DayReference::Tomorrow),
+        ("übermorgen", DayReference::DayAfterTomorrow),
+        ("vorgestern", DayReference::DayBeforeYesterday),
     ])
 }
 
