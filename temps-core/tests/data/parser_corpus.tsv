@@ -1,0 +1,2574 @@
+# Parser behaviour corpus for temps-core.
+#
+# One line per (language, phrase): "<lang>\t<phrase>\t<expectation>", where
+# <lang> is `en` or `de` and <expectation> is either the `Debug` rendering of
+# the `TimeExpression` that `parse` returned or the literal `ERR` when parsing
+# failed. Lines starting with `#` and blank lines are ignored.
+#
+# This file pins the *whole* observable parser surface, not just the cases
+# someone thought to write an assertion for; it is what proved a full parser
+# rewrite behaviour-preserving. Read a diff here as "these phrases changed
+# meaning" and check that every changed line is a change you intended.
+#
+# Regenerating (only ever do this deliberately, for an intended behaviour
+# change, and review the resulting diff line by line):
+#
+#     TEMPS_BLESS_CORPUS=1 just test
+#
+# That rewrites the expectations in place from the current parser and leaves
+# the phrase list untouched. To add phrases, append `<lang>\t<phrase>\tERR`
+# lines and bless once.
+de	+02:00	ERR
+en	+02:00	ERR
+de	-00:30	ERR
+en	-00:30	ERR
+de	-05:30	ERR
+en	-05:30	ERR
+de	00.03.2024	ERR
+en	00.03.2024	ERR
+de	00/03/2024	ERR
+en	00/03/2024	ERR
+de	01-12-2023	ERR
+en	01-12-2023	Date(StandardDate { day: 1, month: 12, year: 2023 })
+de	01.12.2023	Date(StandardDate { day: 1, month: 12, year: 2023 })
+en	01.12.2023	ERR
+de	01/01/2023	ERR
+en	01/01/2023	Date(StandardDate { day: 1, month: 1, year: 2023 })
+de	09:00	Time(Time { hour: 9, minute: 0, second: 0, meridiem: None })
+en	09:00	Time(Time { hour: 9, minute: 0, second: 0, meridiem: None })
+de	09:45 Uhr	Time(Time { hour: 9, minute: 45, second: 0, meridiem: None })
+en	09:45 Uhr	ERR
+de	09:45:30	Time(Time { hour: 9, minute: 45, second: 30, meridiem: None })
+en	09:45:30	Time(Time { hour: 9, minute: 45, second: 30, meridiem: None })
+de	0:30 pm	ERR
+en	0:30 pm	ERR
+de	1 d ago	ERR
+en	1 d ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	1 day ago	ERR
+en	1 day ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	1 days ago	ERR
+en	1 days ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	1 h ago	ERR
+en	1 h ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	1 hour ago	ERR
+en	1 hour ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	1 hours ago	ERR
+en	1 hours ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	1 hr ago	ERR
+en	1 hr ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	1 hrs ago	ERR
+en	1 hrs ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	1 m ago	ERR
+en	1 m ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	1 min ago	ERR
+en	1 min ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	1 mins ago	ERR
+en	1 mins ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	1 minute ago	ERR
+en	1 minute ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	1 minutes ago	ERR
+en	1 minutes ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	1 mo ago	ERR
+en	1 mo ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	1 month ago	ERR
+en	1 month ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	1 months ago	ERR
+en	1 months ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	1 mos ago	ERR
+en	1 mos ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	1 s ago	ERR
+en	1 s ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	1 sec ago	ERR
+en	1 sec ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	1 second ago	ERR
+en	1 second ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	1 seconds ago	ERR
+en	1 seconds ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	1 secs ago	ERR
+en	1 secs ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	1 w ago	ERR
+en	1 w ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	1 week	ERR
+en	1 week	ERR
+de	1 week ago	ERR
+en	1 week ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	1 weeks ago	ERR
+en	1 weeks ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	1 wk ago	ERR
+en	1 wk ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	1 wks ago	ERR
+en	1 wks ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	1 y ago	ERR
+en	1 y ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	1 year ago	ERR
+en	1 year ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	1 years ago	ERR
+en	1 years ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	1 yr ago	ERR
+en	1 yr ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	1 yrs ago	ERR
+en	1 yrs ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	10 minutes	ERR
+en	10 minutes	ERR
+de	10 minutes ago	ERR
+en	10 minutes ago	Relative(RelativeTime { amount: 10, unit: Minute, direction: Past })
+de	10 years ago	ERR
+en	10 years ago	Relative(RelativeTime { amount: 10, unit: Year, direction: Past })
+de	10:15 am	ERR
+en	10:15 am	Time(Time { hour: 10, minute: 15, second: 0, meridiem: Some(AM) })
+de	12:00 AM	ERR
+en	12:00 AM	Time(Time { hour: 12, minute: 0, second: 0, meridiem: Some(AM) })
+de	12:00 PM	ERR
+en	12:00 PM	Time(Time { hour: 12, minute: 0, second: 0, meridiem: Some(PM) })
+de	12:00 am	ERR
+en	12:00 am	Time(Time { hour: 12, minute: 0, second: 0, meridiem: Some(AM) })
+de	12:00 pm	ERR
+en	12:00 pm	Time(Time { hour: 12, minute: 0, second: 0, meridiem: Some(PM) })
+de	12:00:00	Time(Time { hour: 12, minute: 0, second: 0, meridiem: None })
+en	12:00:00	Time(Time { hour: 12, minute: 0, second: 0, meridiem: None })
+de	12am	ERR
+en	12am	Time(Time { hour: 12, minute: 0, second: 0, meridiem: Some(AM) })
+de	13:00 pm	ERR
+en	13:00 pm	ERR
+de	14:30	Time(Time { hour: 14, minute: 30, second: 0, meridiem: None })
+en	14:30	Time(Time { hour: 14, minute: 30, second: 0, meridiem: None })
+de	15-03/2024	ERR
+en	15-03/2024	ERR
+de	15.03.2024	Date(StandardDate { day: 15, month: 3, year: 2024 })
+en	15.03.2024	ERR
+de	15.13.2024	ERR
+en	15.13.2024	ERR
+de	15/03-2024	ERR
+en	15/03-2024	ERR
+de	15/03/2024	ERR
+en	15/03/2024	Date(StandardDate { day: 15, month: 3, year: 2024 })
+de	15/13/2024	ERR
+en	15/13/2024	ERR
+de	15:30	Time(Time { hour: 15, minute: 30, second: 0, meridiem: None })
+en	15:30	Time(Time { hour: 15, minute: 30, second: 0, meridiem: None })
+de	2 d ago	ERR
+en	2 d ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	2 day ago	ERR
+en	2 day ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	2 days ago	ERR
+en	2 days ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	2 h ago	ERR
+en	2 h ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	2 hour ago	ERR
+en	2 hour ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	2 hours	ERR
+en	2 hours	ERR
+de	2 hours ago	ERR
+en	2 hours ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	2 hr ago	ERR
+en	2 hr ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	2 hrs ago	ERR
+en	2 hrs ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	2 m ago	ERR
+en	2 m ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	2 min ago	ERR
+en	2 min ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	2 mins ago	ERR
+en	2 mins ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	2 minute ago	ERR
+en	2 minute ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	2 minutes ago	ERR
+en	2 minutes ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	2 mo ago	ERR
+en	2 mo ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	2 month ago	ERR
+en	2 month ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	2 months ago	ERR
+en	2 months ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	2 mos ago	ERR
+en	2 mos ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	2 s ago	ERR
+en	2 s ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	2 sec ago	ERR
+en	2 sec ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	2 second ago	ERR
+en	2 second ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	2 seconds ago	ERR
+en	2 seconds ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	2 secs ago	ERR
+en	2 secs ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	2 w ago	ERR
+en	2 w ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	2 week ago	ERR
+en	2 week ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	2 weeks ago	ERR
+en	2 weeks ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	2 wk ago	ERR
+en	2 wk ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	2 wks ago	ERR
+en	2 wks ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	2 y ago	ERR
+en	2 y ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	2 year ago	ERR
+en	2 year ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	2 years	ERR
+en	2 years	ERR
+de	2 years ago	ERR
+en	2 years ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	2 yr ago	ERR
+en	2 yr ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	2 yrs ago	ERR
+en	2 yrs ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	2023-02-29	ERR
+en	2023-02-29	ERR
+de	2023-06-15	Absolute(AbsoluteTime { year: 2023, month: 6, day: 15, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
+en	2023-06-15	Absolute(AbsoluteTime { year: 2023, month: 6, day: 15, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
+de	2024-01-15	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
+en	2024-01-15	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
+de	2024-01-15 14:30:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: None })
+en	2024-01-15 14:30:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: None })
+de	2024-01-15T14:30:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: None })
+en	2024-01-15T14:30:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: None })
+de	2024-01-15T14:30:00+02:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: 120 }) })
+en	2024-01-15T14:30:00+02:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: 120 }) })
+de	2024-01-15T14:30:00-05:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: -300 }) })
+en	2024-01-15T14:30:00-05:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: -300 }) })
+de	2024-01-15T14:30:00.123Z	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: Some(123000000), timezone: Some(Utc) })
+en	2024-01-15T14:30:00.123Z	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: Some(123000000), timezone: Some(Utc) })
+de	2024-01-15T14:30:00Z	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Utc) })
+en	2024-01-15T14:30:00Z	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Utc) })
+de	2024-01-15T23:59:00+14:30	ERR
+en	2024-01-15T23:59:00+14:30	ERR
+de	2024-01-15T23:59:00-00:30	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(23), minute: Some(59), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: -30 }) })
+en	2024-01-15T23:59:00-00:30	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(23), minute: Some(59), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: -30 }) })
+de	2024-01-15T23:59:00-12:30	ERR
+en	2024-01-15T23:59:00-12:30	ERR
+de	2024-01-15T23:59:60	ERR
+en	2024-01-15T23:59:60	ERR
+de	2024-01-15T23:60:00	ERR
+en	2024-01-15T23:60:00	ERR
+de	2024-01-15T24:00:00	ERR
+en	2024-01-15T24:00:00	ERR
+de	2024-01-32	ERR
+en	2024-01-32	ERR
+de	2024-02-29	Absolute(AbsoluteTime { year: 2024, month: 2, day: 29, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
+en	2024-02-29	Absolute(AbsoluteTime { year: 2024, month: 2, day: 29, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
+de	2024-02-30	ERR
+en	2024-02-30	ERR
+de	2024-12-25T00:00:00Z	Absolute(AbsoluteTime { year: 2024, month: 12, day: 25, hour: Some(0), minute: Some(0), second: Some(0), nanosecond: None, timezone: Some(Utc) })
+en	2024-12-25T00:00:00Z	Absolute(AbsoluteTime { year: 2024, month: 12, day: 25, hour: Some(0), minute: Some(0), second: Some(0), nanosecond: None, timezone: Some(Utc) })
+de	2024-12-25T15:30:00Z	Absolute(AbsoluteTime { year: 2024, month: 12, day: 25, hour: Some(15), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Utc) })
+en	2024-12-25T15:30:00Z	Absolute(AbsoluteTime { year: 2024, month: 12, day: 25, hour: Some(15), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Utc) })
+de	2024-13-01	ERR
+en	2024-13-01	ERR
+de	23:59	Time(Time { hour: 23, minute: 59, second: 0, meridiem: None })
+en	23:59	Time(Time { hour: 23, minute: 59, second: 0, meridiem: None })
+de	23:59:60	ERR
+en	23:59:60	ERR
+de	23:60	ERR
+en	23:60	ERR
+de	24.12.2024	Date(StandardDate { day: 24, month: 12, year: 2024 })
+en	24.12.2024	ERR
+de	24:00	ERR
+en	24:00	ERR
+de	29.02.2023	ERR
+en	29.02.2023	ERR
+de	29/02/2023	ERR
+en	29/02/2023	ERR
+de	3 days	ERR
+en	3 days	ERR
+de	3 days ago	ERR
+en	3 days ago	Relative(RelativeTime { amount: 3, unit: Day, direction: Past })
+de	3 hours ago	ERR
+en	3 hours ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	3 months ago	ERR
+en	3 months ago	Relative(RelativeTime { amount: 3, unit: Month, direction: Past })
+de	3 pm	ERR
+en	3 pm	Time(Time { hour: 3, minute: 0, second: 0, meridiem: Some(PM) })
+de	31-12-2025	ERR
+en	31-12-2025	Date(StandardDate { day: 31, month: 12, year: 2025 })
+de	31.04.2024	ERR
+en	31.04.2024	ERR
+de	31.12.2025	Date(StandardDate { day: 31, month: 12, year: 2025 })
+en	31.12.2025	ERR
+de	31/04/2024	ERR
+en	31/04/2024	ERR
+de	31/12/2025	ERR
+en	31/12/2025	Date(StandardDate { day: 31, month: 12, year: 2025 })
+de	3:30 PM	ERR
+en	3:30 PM	Time(Time { hour: 3, minute: 30, second: 0, meridiem: Some(PM) })
+de	3:30 pm	ERR
+en	3:30 pm	Time(Time { hour: 3, minute: 30, second: 0, meridiem: Some(PM) })
+de	3:30pm	ERR
+en	3:30pm	Time(Time { hour: 3, minute: 30, second: 0, meridiem: Some(PM) })
+de	3pm	ERR
+en	3pm	Time(Time { hour: 3, minute: 0, second: 0, meridiem: Some(PM) })
+de	4	ERR
+en	4	ERR
+de	4 days ago	ERR
+en	4 days ago	Relative(RelativeTime { amount: 4, unit: Day, direction: Past })
+de	4-digit year	ERR
+en	4-digit year	ERR
+de	45 seconds ago	ERR
+en	45 seconds ago	Relative(RelativeTime { amount: 45, unit: Second, direction: Past })
+de	5 d ago	ERR
+en	5 d ago	Relative(RelativeTime { amount: 5, unit: Day, direction: Past })
+de	5 day ago	ERR
+en	5 day ago	Relative(RelativeTime { amount: 5, unit: Day, direction: Past })
+de	5 days ago	ERR
+en	5 days ago	Relative(RelativeTime { amount: 5, unit: Day, direction: Past })
+de	5 h ago	ERR
+en	5 h ago	Relative(RelativeTime { amount: 5, unit: Hour, direction: Past })
+de	5 hour ago	ERR
+en	5 hour ago	Relative(RelativeTime { amount: 5, unit: Hour, direction: Past })
+de	5 hours ago	ERR
+en	5 hours ago	Relative(RelativeTime { amount: 5, unit: Hour, direction: Past })
+de	5 hr ago	ERR
+en	5 hr ago	Relative(RelativeTime { amount: 5, unit: Hour, direction: Past })
+de	5 hrs ago	ERR
+en	5 hrs ago	Relative(RelativeTime { amount: 5, unit: Hour, direction: Past })
+de	5 m ago	ERR
+en	5 m ago	Relative(RelativeTime { amount: 5, unit: Minute, direction: Past })
+de	5 min ago	ERR
+en	5 min ago	Relative(RelativeTime { amount: 5, unit: Minute, direction: Past })
+de	5 mins ago	ERR
+en	5 mins ago	Relative(RelativeTime { amount: 5, unit: Minute, direction: Past })
+de	5 minute ago	ERR
+en	5 minute ago	Relative(RelativeTime { amount: 5, unit: Minute, direction: Past })
+de	5 minutes	ERR
+en	5 minutes	ERR
+de	5 minutes ago	ERR
+en	5 minutes ago	Relative(RelativeTime { amount: 5, unit: Minute, direction: Past })
+de	5 mo ago	ERR
+en	5 mo ago	Relative(RelativeTime { amount: 5, unit: Month, direction: Past })
+de	5 month ago	ERR
+en	5 month ago	Relative(RelativeTime { amount: 5, unit: Month, direction: Past })
+de	5 months ago	ERR
+en	5 months ago	Relative(RelativeTime { amount: 5, unit: Month, direction: Past })
+de	5 mos ago	ERR
+en	5 mos ago	Relative(RelativeTime { amount: 5, unit: Month, direction: Past })
+de	5 s ago	ERR
+en	5 s ago	Relative(RelativeTime { amount: 5, unit: Second, direction: Past })
+de	5 sec ago	ERR
+en	5 sec ago	Relative(RelativeTime { amount: 5, unit: Second, direction: Past })
+de	5 second ago	ERR
+en	5 second ago	Relative(RelativeTime { amount: 5, unit: Second, direction: Past })
+de	5 seconds	ERR
+en	5 seconds	ERR
+de	5 seconds ago	ERR
+en	5 seconds ago	Relative(RelativeTime { amount: 5, unit: Second, direction: Past })
+de	5 secs ago	ERR
+en	5 secs ago	Relative(RelativeTime { amount: 5, unit: Second, direction: Past })
+de	5 w ago	ERR
+en	5 w ago	Relative(RelativeTime { amount: 5, unit: Week, direction: Past })
+de	5 week ago	ERR
+en	5 week ago	Relative(RelativeTime { amount: 5, unit: Week, direction: Past })
+de	5 weeks ago	ERR
+en	5 weeks ago	Relative(RelativeTime { amount: 5, unit: Week, direction: Past })
+de	5 wk ago	ERR
+en	5 wk ago	Relative(RelativeTime { amount: 5, unit: Week, direction: Past })
+de	5 wks ago	ERR
+en	5 wks ago	Relative(RelativeTime { amount: 5, unit: Week, direction: Past })
+de	5 y ago	ERR
+en	5 y ago	Relative(RelativeTime { amount: 5, unit: Year, direction: Past })
+de	5 year ago	ERR
+en	5 year ago	Relative(RelativeTime { amount: 5, unit: Year, direction: Past })
+de	5 years ago	ERR
+en	5 years ago	Relative(RelativeTime { amount: 5, unit: Year, direction: Past })
+de	5 yr ago	ERR
+en	5 yr ago	Relative(RelativeTime { amount: 5, unit: Year, direction: Past })
+de	5 yrs ago	ERR
+en	5 yrs ago	Relative(RelativeTime { amount: 5, unit: Year, direction: Past })
+de	6 months	ERR
+en	6 months	ERR
+de	6 months ago	ERR
+en	6 months ago	Relative(RelativeTime { amount: 6, unit: Month, direction: Past })
+de	9:00 PM	ERR
+en	9:00 PM	Time(Time { hour: 9, minute: 0, second: 0, meridiem: Some(PM) })
+de	Ambiguous local time	ERR
+en	Ambiguous local time	ERR
+de	Ambiguous local time: {message}	ERR
+en	Ambiguous local time: {message}	ERR
+de	Ambiguous or invalid local time	ERR
+en	Ambiguous or invalid local time	ERR
+de	Amount: {}, Unit: {:?}	ERR
+en	Amount: {}, Unit: {:?}	ERR
+de	Arithmetic overflow: {operation}	ERR
+en	Arithmetic overflow: {operation}	ERR
+de	Backend error: {message}	ERR
+en	Backend error: {message}	ERR
+de	Cannot subtract 13 months from January	ERR
+en	Cannot subtract 13 months from January	ERR
+de	Date calculation error	ERR
+en	Date calculation error	ERR
+de	Date calculation error: {message}	ERR
+en	Date calculation error: {message}	ERR
+de	Date: {:02}/{:02}/{:04}	ERR
+en	Date: {:02}/{:02}/{:04}	ERR
+de	Datum (TT.MM.JJJJ)	ERR
+en	Datum (TT.MM.JJJJ)	ERR
+de	Day + time: {:?} at {:02}:{:02}	ERR
+en	Day + time: {:?} at {:02}:{:02}	ERR
+de	Day After Tomorrow	ERR
+en	Day After Tomorrow	Day(DayAfterTomorrow)
+de	Day reference: {:?}	ERR
+en	Day reference: {:?}	ERR
+de	Day should be 15	ERR
+en	Day should be 15	ERR
+de	Dienstag	Day(Weekday { day: Tuesday, modifier: None })
+en	Dienstag	ERR
+de	Donnerstag	Day(Weekday { day: Thursday, modifier: None })
+en	Donnerstag	ERR
+de	EOD	ERR
+en	EOD	DayTime(DayTime { day: Today, time: Time { hour: 17, minute: 0, second: 0, meridiem: None } })
+de	Expected Date expression for: {input}	ERR
+en	Expected Date expression for: {input}	ERR
+de	Expected DayTime expression for: {input}	ERR
+en	Expected DayTime expression for: {input}	ERR
+de	Expected Time expression for: {input}	ERR
+en	Expected Time expression for: {input}	ERR
+de	Expected amount 1 for: {input}	ERR
+en	Expected amount 1 for: {input}	ERR
+de	Expected relative time expression	ERR
+en	Expected relative time expression	ERR
+de	Expected time unit	ERR
+en	Expected time unit	ERR
+de	Failed for input: {input}	ERR
+en	Failed for input: {input}	ERR
+de	Failed to add months	ERR
+en	Failed to add months	ERR
+de	Failed to add time	ERR
+en	Failed to add time	ERR
+de	Failed to calculate day after tomorrow	ERR
+en	Failed to calculate day after tomorrow	ERR
+de	Failed to calculate day before yesterday	ERR
+en	Failed to calculate day before yesterday	ERR
+de	Failed to calculate tomorrow	ERR
+en	Failed to calculate tomorrow	ERR
+de	Failed to calculate weekday	ERR
+en	Failed to calculate weekday	ERR
+de	Failed to calculate yesterday	ERR
+en	Failed to calculate yesterday	ERR
+de	Failed to create date: {e}	ERR
+en	Failed to create date: {e}	ERR
+de	Failed to create day time: {e}	ERR
+en	Failed to create day time: {e}	ERR
+de	Failed to create midnight time	ERR
+en	Failed to create midnight time	ERR
+de	Failed to create time: {e}	ERR
+en	Failed to create time: {e}	ERR
+de	Failed to create today's date	ERR
+en	Failed to create today's date	ERR
+de	Failed to create tomorrow's date	ERR
+en	Failed to create tomorrow's date	ERR
+de	Failed to create weekday date	ERR
+en	Failed to create weekday date	ERR
+de	Failed to create yesterday's date	ERR
+en	Failed to create yesterday's date	ERR
+de	Failed to parse absolute time: {input}	ERR
+en	Failed to parse absolute time: {input}	ERR
+de	Failed to parse expression	ERR
+en	Failed to parse expression	ERR
+de	Failed to parse time expression	ERR
+en	Failed to parse time expression	ERR
+de	Failed to parse: {input}	ERR
+en	Failed to parse: {input}	ERR
+de	Failed to subtract time	ERR
+en	Failed to subtract time	ERR
+de	Freitag	Day(Weekday { day: Friday, modifier: None })
+en	Freitag	ERR
+de	Friday	ERR
+en	Friday	Day(Weekday { day: Friday, modifier: None })
+de	GESTERN	Day(Yesterday)
+en	GESTERN	ERR
+de	German article should parse to amount 1	ERR
+en	German article should parse to amount 1	ERR
+de	HEUTE	Day(Today)
+en	HEUTE	ERR
+de	ISO 8601 datetime	ERR
+en	ISO 8601 datetime	ERR
+de	ISO date: {:04}-{:02}-{:02}	ERR
+en	ISO date: {:04}-{:02}-{:02}	ERR
+de	In 30 minutes: {}	ERR
+en	In 30 minutes: {}	ERR
+de	In 5 Minuten	Relative(RelativeTime { amount: 5, unit: Minute, direction: Future })
+en	In 5 Minuten	ERR
+de	In 5 minutes: {}	ERR
+en	In 5 minutes: {}	ERR
+de	Invalid date	ERR
+en	Invalid date	ERR
+de	Invalid date: {year}-{month}-{day}	ERR
+en	Invalid date: {year}-{month}-{day}	ERR
+de	Invalid nanosecond component	ERR
+en	Invalid nanosecond component	ERR
+de	Invalid time	ERR
+en	Invalid time	ERR
+de	Invalid time: 25:61:61	ERR
+en	Invalid time: 25:61:61	ERR
+de	Invalid time: {hour}:{minute}:{second}	ERR
+en	Invalid time: {hour}:{minute}:{second}	ERR
+de	JETZT	Now
+en	JETZT	ERR
+de	Jahr	ERR
+en	Jahr	ERR
+de	Jahre	ERR
+en	Jahre	ERR
+de	Jahren	ERR
+en	Jahren	ERR
+de	Jetzt	Now
+en	Jetzt	ERR
+de	Midnight	ERR
+en	Midnight	Time(Time { hour: 0, minute: 0, second: 0, meridiem: None })
+de	Minute	ERR
+en	Minute	ERR
+de	Minuten	ERR
+en	Minuten	ERR
+de	Mismatch for input: {input}	ERR
+en	Mismatch for input: {input}	ERR
+de	Mittwoch	Day(Weekday { day: Wednesday, modifier: None })
+en	Mittwoch	ERR
+de	Monat	ERR
+en	Monat	ERR
+de	Monate	ERR
+en	Monate	ERR
+de	Monaten	ERR
+en	Monaten	ERR
+de	Monday	ERR
+en	Monday	Day(Weekday { day: Monday, modifier: None })
+de	Montag	Day(Weekday { day: Monday, modifier: None })
+en	Montag	ERR
+de	Montag um 15:30	DayTime(DayTime { day: Weekday { day: Monday, modifier: None }, time: Time { hour: 15, minute: 30, second: 0, meridiem: None } })
+en	Montag um 15:30	ERR
+de	Montag um 15:45	DayTime(DayTime { day: Weekday { day: Monday, modifier: None }, time: Time { hour: 15, minute: 45, second: 0, meridiem: None } })
+en	Montag um 15:45	ERR
+de	Month amount must be a positive number	ERR
+en	Month amount must be a positive number	ERR
+de	Month overflow	ERR
+en	Month overflow	ERR
+de	Month should be January	ERR
+en	Month should be January	ERR
+de	Morgen	Day(Tomorrow)
+en	Morgen	ERR
+de	NOON	ERR
+en	NOON	Time(Time { hour: 12, minute: 0, second: 0, meridiem: None })
+de	NOW	ERR
+en	NOW	Now
+de	Next Monday at 9:00 am: {}	ERR
+en	Next Monday at 9:00 am: {}	ERR
+de	Now	ERR
+en	Now	Now
+de	Parse failed: {}	ERR
+en	Parse failed: {}	ERR
+de	Relative amount must be non-negative	ERR
+en	Relative amount must be non-negative	ERR
+de	Right now!	ERR
+en	Right now!	ERR
+de	Samstag	Day(Weekday { day: Saturday, modifier: None })
+en	Samstag	ERR
+de	Sekunde	ERR
+en	Sekunde	ERR
+de	Sekunden	ERR
+en	Sekunden	ERR
+de	Sonntag	Day(Weekday { day: Sunday, modifier: None })
+en	Sonntag	ERR
+de	Stunde	ERR
+en	Stunde	ERR
+de	Stunden	ERR
+en	Stunden	ERR
+de	TODAY	ERR
+en	TODAY	Day(Today)
+de	Tag	ERR
+en	Tag	ERR
+de	Tag mit Uhrzeit	ERR
+en	Tag mit Uhrzeit	ERR
+de	Tage	ERR
+en	Tage	ERR
+de	Tagen	ERR
+en	Tagen	ERR
+de	Tagesangabe	ERR
+en	Tagesangabe	ERR
+de	Time: {:02}:{:02}	ERR
+en	Time: {:02}:{:02}	ERR
+de	Timezone conversion error	ERR
+en	Timezone conversion error	ERR
+de	Tomorrow	ERR
+en	Tomorrow	Day(Tomorrow)
+de	Tomorrow at 15:30: {}	ERR
+en	Tomorrow at 15:30: {}	ERR
+de	Tuesday	ERR
+en	Tuesday	Day(Weekday { day: Tuesday, modifier: None })
+de	Uhrzeit	ERR
+en	Uhrzeit	ERR
+de	Unexpected character	ERR
+en	Unexpected character	ERR
+de	Unexpected unit for: {input}	ERR
+en	Unexpected unit for: {input}	ERR
+de	Unhandled test case: {input}	ERR
+en	Unhandled test case: {input}	ERR
+de	Unrecognized time unit	ERR
+en	Unrecognized time unit	ERR
+de	Unsupported operation: {operation}	ERR
+en	Unsupported operation: {operation}	ERR
+de	Vor 2 Stunden	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+en	Vor 2 Stunden	ERR
+de	Woche	ERR
+en	Woche	ERR
+de	Wochen	ERR
+en	Wochen	ERR
+de	Wochentag	ERR
+en	Wochentag	ERR
+de	Wrong error type	ERR
+en	Wrong error type	ERR
+de	Wrong unit for: {input}	ERR
+en	Wrong unit for: {input}	ERR
+de	YESTERDAY	ERR
+en	YESTERDAY	Day(Yesterday)
+de	Year amount must be a positive number	ERR
+en	Year amount must be a positive number	ERR
+de	Year calculation overflow	ERR
+en	Year calculation overflow	ERR
+de	Year should be 2024	ERR
+en	Year should be 2024	ERR
+de	Year should be 2024 or later	ERR
+en	Year should be 2024 or later	ERR
+de	Z	ERR
+en	Z	ERR
+de	Zahl	ERR
+en	Zahl	ERR
+de	Zeiteinheit	ERR
+en	Zeiteinheit	ERR
+de	`<n> <unit> ago`	ERR
+en	`<n> <unit> ago`	ERR
+de	`in <n> <Einheit>`	ERR
+en	`in <n> <Einheit>`	ERR
+de	`in <n> <unit>`	ERR
+en	`in <n> <unit>`	ERR
+de	`jetzt`	ERR
+en	`jetzt`	ERR
+de	`now`	ERR
+en	`now`	ERR
+de	`vor <n> <Einheit>`	ERR
+en	`vor <n> <Einheit>`	ERR
+de	a	ERR
+en	a	ERR
+de	a couple	ERR
+en	a couple	ERR
+de	a couple d ago	ERR
+en	a couple d ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	a couple day ago	ERR
+en	a couple day ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	a couple days ago	ERR
+en	a couple days ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	a couple h ago	ERR
+en	a couple h ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	a couple hour ago	ERR
+en	a couple hour ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	a couple hours ago	ERR
+en	a couple hours ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	a couple hr ago	ERR
+en	a couple hr ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	a couple hrs ago	ERR
+en	a couple hrs ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	a couple m ago	ERR
+en	a couple m ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	a couple min ago	ERR
+en	a couple min ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	a couple mins ago	ERR
+en	a couple mins ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	a couple minute ago	ERR
+en	a couple minute ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	a couple minutes ago	ERR
+en	a couple minutes ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	a couple mo ago	ERR
+en	a couple mo ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	a couple month ago	ERR
+en	a couple month ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	a couple months ago	ERR
+en	a couple months ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	a couple mos ago	ERR
+en	a couple mos ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	a couple of	ERR
+en	a couple of	ERR
+de	a couple s ago	ERR
+en	a couple s ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	a couple sec ago	ERR
+en	a couple sec ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	a couple second ago	ERR
+en	a couple second ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	a couple seconds ago	ERR
+en	a couple seconds ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	a couple secs ago	ERR
+en	a couple secs ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	a couple w ago	ERR
+en	a couple w ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	a couple week ago	ERR
+en	a couple week ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	a couple weeks ago	ERR
+en	a couple weeks ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	a couple wk ago	ERR
+en	a couple wk ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	a couple wks ago	ERR
+en	a couple wks ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	a couple y ago	ERR
+en	a couple y ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	a couple year ago	ERR
+en	a couple year ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	a couple years ago	ERR
+en	a couple years ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	a couple yr ago	ERR
+en	a couple yr ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	a couple yrs ago	ERR
+en	a couple yrs ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	a d ago	ERR
+en	a d ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	a day ago	ERR
+en	a day ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	a days ago	ERR
+en	a days ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	a dozen	ERR
+en	a dozen	ERR
+de	a dozen d ago	ERR
+en	a dozen d ago	Relative(RelativeTime { amount: 12, unit: Day, direction: Past })
+de	a dozen day ago	ERR
+en	a dozen day ago	Relative(RelativeTime { amount: 12, unit: Day, direction: Past })
+de	a dozen days ago	ERR
+en	a dozen days ago	Relative(RelativeTime { amount: 12, unit: Day, direction: Past })
+de	a dozen h ago	ERR
+en	a dozen h ago	Relative(RelativeTime { amount: 12, unit: Hour, direction: Past })
+de	a dozen hour ago	ERR
+en	a dozen hour ago	Relative(RelativeTime { amount: 12, unit: Hour, direction: Past })
+de	a dozen hours ago	ERR
+en	a dozen hours ago	Relative(RelativeTime { amount: 12, unit: Hour, direction: Past })
+de	a dozen hr ago	ERR
+en	a dozen hr ago	Relative(RelativeTime { amount: 12, unit: Hour, direction: Past })
+de	a dozen hrs ago	ERR
+en	a dozen hrs ago	Relative(RelativeTime { amount: 12, unit: Hour, direction: Past })
+de	a dozen m ago	ERR
+en	a dozen m ago	Relative(RelativeTime { amount: 12, unit: Minute, direction: Past })
+de	a dozen min ago	ERR
+en	a dozen min ago	Relative(RelativeTime { amount: 12, unit: Minute, direction: Past })
+de	a dozen mins ago	ERR
+en	a dozen mins ago	Relative(RelativeTime { amount: 12, unit: Minute, direction: Past })
+de	a dozen minute ago	ERR
+en	a dozen minute ago	Relative(RelativeTime { amount: 12, unit: Minute, direction: Past })
+de	a dozen minutes ago	ERR
+en	a dozen minutes ago	Relative(RelativeTime { amount: 12, unit: Minute, direction: Past })
+de	a dozen mo ago	ERR
+en	a dozen mo ago	Relative(RelativeTime { amount: 12, unit: Month, direction: Past })
+de	a dozen month ago	ERR
+en	a dozen month ago	Relative(RelativeTime { amount: 12, unit: Month, direction: Past })
+de	a dozen months ago	ERR
+en	a dozen months ago	Relative(RelativeTime { amount: 12, unit: Month, direction: Past })
+de	a dozen mos ago	ERR
+en	a dozen mos ago	Relative(RelativeTime { amount: 12, unit: Month, direction: Past })
+de	a dozen s ago	ERR
+en	a dozen s ago	Relative(RelativeTime { amount: 12, unit: Second, direction: Past })
+de	a dozen sec ago	ERR
+en	a dozen sec ago	Relative(RelativeTime { amount: 12, unit: Second, direction: Past })
+de	a dozen second ago	ERR
+en	a dozen second ago	Relative(RelativeTime { amount: 12, unit: Second, direction: Past })
+de	a dozen seconds ago	ERR
+en	a dozen seconds ago	Relative(RelativeTime { amount: 12, unit: Second, direction: Past })
+de	a dozen secs ago	ERR
+en	a dozen secs ago	Relative(RelativeTime { amount: 12, unit: Second, direction: Past })
+de	a dozen w ago	ERR
+en	a dozen w ago	Relative(RelativeTime { amount: 12, unit: Week, direction: Past })
+de	a dozen week ago	ERR
+en	a dozen week ago	Relative(RelativeTime { amount: 12, unit: Week, direction: Past })
+de	a dozen weeks ago	ERR
+en	a dozen weeks ago	Relative(RelativeTime { amount: 12, unit: Week, direction: Past })
+de	a dozen wk ago	ERR
+en	a dozen wk ago	Relative(RelativeTime { amount: 12, unit: Week, direction: Past })
+de	a dozen wks ago	ERR
+en	a dozen wks ago	Relative(RelativeTime { amount: 12, unit: Week, direction: Past })
+de	a dozen y ago	ERR
+en	a dozen y ago	Relative(RelativeTime { amount: 12, unit: Year, direction: Past })
+de	a dozen year ago	ERR
+en	a dozen year ago	Relative(RelativeTime { amount: 12, unit: Year, direction: Past })
+de	a dozen years ago	ERR
+en	a dozen years ago	Relative(RelativeTime { amount: 12, unit: Year, direction: Past })
+de	a dozen yr ago	ERR
+en	a dozen yr ago	Relative(RelativeTime { amount: 12, unit: Year, direction: Past })
+de	a dozen yrs ago	ERR
+en	a dozen yrs ago	Relative(RelativeTime { amount: 12, unit: Year, direction: Past })
+de	a few	ERR
+en	a few	ERR
+de	a few d ago	ERR
+en	a few d ago	Relative(RelativeTime { amount: 3, unit: Day, direction: Past })
+de	a few day ago	ERR
+en	a few day ago	Relative(RelativeTime { amount: 3, unit: Day, direction: Past })
+de	a few days ago	ERR
+en	a few days ago	Relative(RelativeTime { amount: 3, unit: Day, direction: Past })
+de	a few h ago	ERR
+en	a few h ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	a few hour ago	ERR
+en	a few hour ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	a few hours ago	ERR
+en	a few hours ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	a few hr ago	ERR
+en	a few hr ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	a few hrs ago	ERR
+en	a few hrs ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	a few m ago	ERR
+en	a few m ago	Relative(RelativeTime { amount: 3, unit: Minute, direction: Past })
+de	a few min ago	ERR
+en	a few min ago	Relative(RelativeTime { amount: 3, unit: Minute, direction: Past })
+de	a few mins ago	ERR
+en	a few mins ago	Relative(RelativeTime { amount: 3, unit: Minute, direction: Past })
+de	a few minute ago	ERR
+en	a few minute ago	Relative(RelativeTime { amount: 3, unit: Minute, direction: Past })
+de	a few minutes ago	ERR
+en	a few minutes ago	Relative(RelativeTime { amount: 3, unit: Minute, direction: Past })
+de	a few mo ago	ERR
+en	a few mo ago	Relative(RelativeTime { amount: 3, unit: Month, direction: Past })
+de	a few month ago	ERR
+en	a few month ago	Relative(RelativeTime { amount: 3, unit: Month, direction: Past })
+de	a few months ago	ERR
+en	a few months ago	Relative(RelativeTime { amount: 3, unit: Month, direction: Past })
+de	a few mos ago	ERR
+en	a few mos ago	Relative(RelativeTime { amount: 3, unit: Month, direction: Past })
+de	a few s ago	ERR
+en	a few s ago	Relative(RelativeTime { amount: 3, unit: Second, direction: Past })
+de	a few sec ago	ERR
+en	a few sec ago	Relative(RelativeTime { amount: 3, unit: Second, direction: Past })
+de	a few second ago	ERR
+en	a few second ago	Relative(RelativeTime { amount: 3, unit: Second, direction: Past })
+de	a few seconds ago	ERR
+en	a few seconds ago	Relative(RelativeTime { amount: 3, unit: Second, direction: Past })
+de	a few secs ago	ERR
+en	a few secs ago	Relative(RelativeTime { amount: 3, unit: Second, direction: Past })
+de	a few w ago	ERR
+en	a few w ago	Relative(RelativeTime { amount: 3, unit: Week, direction: Past })
+de	a few week ago	ERR
+en	a few week ago	Relative(RelativeTime { amount: 3, unit: Week, direction: Past })
+de	a few weeks ago	ERR
+en	a few weeks ago	Relative(RelativeTime { amount: 3, unit: Week, direction: Past })
+de	a few wk ago	ERR
+en	a few wk ago	Relative(RelativeTime { amount: 3, unit: Week, direction: Past })
+de	a few wks ago	ERR
+en	a few wks ago	Relative(RelativeTime { amount: 3, unit: Week, direction: Past })
+de	a few y ago	ERR
+en	a few y ago	Relative(RelativeTime { amount: 3, unit: Year, direction: Past })
+de	a few year ago	ERR
+en	a few year ago	Relative(RelativeTime { amount: 3, unit: Year, direction: Past })
+de	a few years ago	ERR
+en	a few years ago	Relative(RelativeTime { amount: 3, unit: Year, direction: Past })
+de	a few yr ago	ERR
+en	a few yr ago	Relative(RelativeTime { amount: 3, unit: Year, direction: Past })
+de	a few yrs ago	ERR
+en	a few yrs ago	Relative(RelativeTime { amount: 3, unit: Year, direction: Past })
+de	a h ago	ERR
+en	a h ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	a hour ago	ERR
+en	a hour ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	a hours ago	ERR
+en	a hours ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	a hr ago	ERR
+en	a hr ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	a hrs ago	ERR
+en	a hrs ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	a m ago	ERR
+en	a m ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	a min ago	ERR
+en	a min ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	a mins ago	ERR
+en	a mins ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	a minute ago	ERR
+en	a minute ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	a minutes ago	ERR
+en	a minutes ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	a mo ago	ERR
+en	a mo ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	a month ago	ERR
+en	a month ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	a months ago	ERR
+en	a months ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	a mos ago	ERR
+en	a mos ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	a s ago	ERR
+en	a s ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	a sec ago	ERR
+en	a sec ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	a second ago	ERR
+en	a second ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	a seconds ago	ERR
+en	a seconds ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	a secs ago	ERR
+en	a secs ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	a w ago	ERR
+en	a w ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	a week ago	ERR
+en	a week ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	a week from now	ERR
+en	a week from now	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	a week from now/today	ERR
+en	a week from now/today	ERR
+de	a week from today	ERR
+en	a week from today	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	a weeks ago	ERR
+en	a weeks ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	a wk ago	ERR
+en	a wk ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	a wks ago	ERR
+en	a wks ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	a y ago	ERR
+en	a y ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	a year ago	ERR
+en	a year ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	a years ago	ERR
+en	a years ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	a yr ago	ERR
+en	a yr ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	a yrs ago	ERR
+en	a yrs ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	a.m.	ERR
+en	a.m.	ERR
+de	acht	ERR
+en	acht	ERR
+de	afternoon	ERR
+en	afternoon	ERR
+de	ago	ERR
+en	ago	ERR
+de	am	ERR
+en	am	ERR
+de	am/pm	ERR
+en	am/pm	ERR
+de	an	ERR
+en	an	ERR
+de	an d ago	ERR
+en	an d ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	an day ago	ERR
+en	an day ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	an days ago	ERR
+en	an days ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	an h ago	ERR
+en	an h ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	an hour ago	ERR
+en	an hour ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	an hours ago	ERR
+en	an hours ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	an hr ago	ERR
+en	an hr ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	an hrs ago	ERR
+en	an hrs ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	an m ago	ERR
+en	an m ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	an min ago	ERR
+en	an min ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	an mins ago	ERR
+en	an mins ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	an minute ago	ERR
+en	an minute ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	an minutes ago	ERR
+en	an minutes ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	an mo ago	ERR
+en	an mo ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	an month ago	ERR
+en	an month ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	an months ago	ERR
+en	an months ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	an mos ago	ERR
+en	an mos ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	an s ago	ERR
+en	an s ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	an sec ago	ERR
+en	an sec ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	an second ago	ERR
+en	an second ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	an seconds ago	ERR
+en	an seconds ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	an secs ago	ERR
+en	an secs ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	an w ago	ERR
+en	an w ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	an week ago	ERR
+en	an week ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	an weeks ago	ERR
+en	an weeks ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	an wk ago	ERR
+en	an wk ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	an wks ago	ERR
+en	an wks ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	an y ago	ERR
+en	an y ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	an year ago	ERR
+en	an year ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	an years ago	ERR
+en	an years ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	an yr ago	ERR
+en	an yr ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	an yrs ago	ERR
+en	an yrs ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	at	ERR
+en	at	ERR
+de	calendar date	ERR
+en	calendar date	ERR
+de	conversion failed	ERR
+en	conversion failed	ERR
+de	could not parse time expression	ERR
+en	could not parse time expression	ERR
+de	couple of	ERR
+en	couple of	ERR
+de	couple of d ago	ERR
+en	couple of d ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	couple of day ago	ERR
+en	couple of day ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	couple of days ago	ERR
+en	couple of days ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	couple of h ago	ERR
+en	couple of h ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	couple of hour ago	ERR
+en	couple of hour ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	couple of hours ago	ERR
+en	couple of hours ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	couple of hr ago	ERR
+en	couple of hr ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	couple of hrs ago	ERR
+en	couple of hrs ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	couple of m ago	ERR
+en	couple of m ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	couple of min ago	ERR
+en	couple of min ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	couple of mins ago	ERR
+en	couple of mins ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	couple of minute ago	ERR
+en	couple of minute ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	couple of minutes ago	ERR
+en	couple of minutes ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	couple of mo ago	ERR
+en	couple of mo ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	couple of month ago	ERR
+en	couple of month ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	couple of months ago	ERR
+en	couple of months ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	couple of mos ago	ERR
+en	couple of mos ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	couple of s ago	ERR
+en	couple of s ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	couple of sec ago	ERR
+en	couple of sec ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	couple of second ago	ERR
+en	couple of second ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	couple of seconds ago	ERR
+en	couple of seconds ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	couple of secs ago	ERR
+en	couple of secs ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	couple of w ago	ERR
+en	couple of w ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	couple of week ago	ERR
+en	couple of week ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	couple of weeks ago	ERR
+en	couple of weeks ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	couple of wk ago	ERR
+en	couple of wk ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	couple of wks ago	ERR
+en	couple of wks ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	couple of y ago	ERR
+en	couple of y ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	couple of year ago	ERR
+en	couple of year ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	couple of years ago	ERR
+en	couple of years ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	couple of yr ago	ERR
+en	couple of yr ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	couple of yrs ago	ERR
+en	couple of yrs ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	d	ERR
+en	d	ERR
+de	day	ERR
+en	day	ERR
+de	day after tomorrow	ERR
+en	day after tomorrow	Day(DayAfterTomorrow)
+de	day after tomorrow at 5:00 pm	ERR
+en	day after tomorrow at 5:00 pm	DayTime(DayTime { day: DayAfterTomorrow, time: Time { hour: 5, minute: 0, second: 0, meridiem: Some(PM) } })
+de	day before yesterday	ERR
+en	day before yesterday	Day(DayBeforeYesterday)
+de	day reference	ERR
+en	day reference	ERR
+de	day with part of day	ERR
+en	day with part of day	ERR
+de	day with time	ERR
+en	day with time	ERR
+de	days	ERR
+en	days	ERR
+de	di	Day(Weekday { day: Tuesday, modifier: None })
+en	di	ERR
+de	digit	ERR
+en	digit	ERR
+de	do	Day(Weekday { day: Thursday, modifier: None })
+en	do	ERR
+de	drei	ERR
+en	drei	ERR
+de	eight	ERR
+en	eight	ERR
+de	ein	ERR
+en	ein	ERR
+de	eine	ERR
+en	eine	ERR
+de	einem	ERR
+en	einem	ERR
+de	einen	ERR
+en	einen	ERR
+de	einer	ERR
+en	einer	ERR
+de	end of day	ERR
+en	end of day	DayTime(DayTime { day: Today, time: Time { hour: 17, minute: 0, second: 0, meridiem: None } })
+de	end of input	ERR
+en	end of input	ERR
+de	end of the day	ERR
+en	end of the day	DayTime(DayTime { day: Today, time: Time { hour: 17, minute: 0, second: 0, meridiem: None } })
+de	eod	ERR
+en	eod	DayTime(DayTime { day: Today, time: Time { hour: 17, minute: 0, second: 0, meridiem: None } })
+de	evening	ERR
+en	evening	ERR
+de	expected `now`	ERR
+en	expected `now`	ERR
+de	expected one of {} or {}, found {found}	ERR
+en	expected one of {} or {}, found {found}	ERR
+de	expected {one}, found {found}	ERR
+en	expected {one}, found {found}	ERR
+de	five	ERR
+en	five	ERR
+de	fortnight	ERR
+en	fortnight	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	four	ERR
+en	four	ERR
+de	fr	Day(Weekday { day: Friday, modifier: None })
+en	fr	ERR
+de	fraction length is capped at 9 digits	ERR
+en	fraction length is capped at 9 digits	ERR
+de	fri	ERR
+en	fri	Day(Weekday { day: Friday, modifier: None })
+de	friday	ERR
+en	friday	Day(Weekday { day: Friday, modifier: None })
+de	fünf	ERR
+en	fünf	ERR
+de	gestern	Day(Yesterday)
+en	gestern	ERR
+de	h	ERR
+en	h	ERR
+de	half past	ERR
+en	half past	ERR
+de	half past 3	ERR
+en	half past 3	Time(Time { hour: 3, minute: 30, second: 0, meridiem: None })
+de	half past X	ERR
+en	half past X	ERR
+de	half past noon	ERR
+en	half past noon	Time(Time { hour: 12, minute: 30, second: 0, meridiem: None })
+de	heute	Day(Today)
+en	heute	ERR
+de	heute um 14:30	DayTime(DayTime { day: Today, time: Time { hour: 14, minute: 30, second: 0, meridiem: None } })
+en	heute um 14:30	ERR
+de	hour	ERR
+en	hour	ERR
+de	hour must be 0-23	ERR
+en	hour must be 0-23	ERR
+de	hours	ERR
+en	hours	ERR
+de	hr	ERR
+en	hr	ERR
+de	hrs	ERR
+en	hrs	ERR
+de	in	ERR
+en	in	ERR
+de	in 1 Tag	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+en	in 1 Tag	ERR
+de	in 1 Woche	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+en	in 1 Woche	ERR
+de	in 1 d	ERR
+en	in 1 d	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in 1 day	ERR
+en	in 1 day	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in 1 days	ERR
+en	in 1 days	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in 1 h	ERR
+en	in 1 h	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in 1 hour	ERR
+en	in 1 hour	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in 1 hours	ERR
+en	in 1 hours	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in 1 hr	ERR
+en	in 1 hr	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in 1 hrs	ERR
+en	in 1 hrs	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in 1 m	ERR
+en	in 1 m	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in 1 min	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+en	in 1 min	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in 1 mins	ERR
+en	in 1 mins	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in 1 minute	ERR
+en	in 1 minute	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in 1 minutes	ERR
+en	in 1 minutes	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in 1 mo	ERR
+en	in 1 mo	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in 1 month	ERR
+en	in 1 month	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in 1 months	ERR
+en	in 1 months	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in 1 mos	ERR
+en	in 1 mos	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in 1 s	ERR
+en	in 1 s	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in 1 sec	ERR
+en	in 1 sec	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in 1 second	ERR
+en	in 1 second	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in 1 seconds	ERR
+en	in 1 seconds	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in 1 secs	ERR
+en	in 1 secs	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in 1 w	ERR
+en	in 1 w	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in 1 week	ERR
+en	in 1 week	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in 1 weeks	ERR
+en	in 1 weeks	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in 1 wk	ERR
+en	in 1 wk	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in 1 wks	ERR
+en	in 1 wks	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in 1 y	ERR
+en	in 1 y	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in 1 year	ERR
+en	in 1 year	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in 1 years	ERR
+en	in 1 years	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in 1 yr	ERR
+en	in 1 yr	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in 1 yrs	ERR
+en	in 1 yrs	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in 18 months	ERR
+en	in 18 months	Relative(RelativeTime { amount: 18, unit: Month, direction: Future })
+de	in 2 Stunden	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+en	in 2 Stunden	ERR
+de	in 2 d	ERR
+en	in 2 d	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in 2 day	ERR
+en	in 2 day	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in 2 days	ERR
+en	in 2 days	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in 2 h	ERR
+en	in 2 h	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in 2 hour	ERR
+en	in 2 hour	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in 2 hours	ERR
+en	in 2 hours	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in 2 hr	ERR
+en	in 2 hr	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in 2 hrs	ERR
+en	in 2 hrs	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in 2 m	ERR
+en	in 2 m	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in 2 min	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+en	in 2 min	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in 2 mins	ERR
+en	in 2 mins	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in 2 minute	ERR
+en	in 2 minute	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in 2 minutes	ERR
+en	in 2 minutes	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in 2 mo	ERR
+en	in 2 mo	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in 2 month	ERR
+en	in 2 month	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in 2 months	ERR
+en	in 2 months	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in 2 mos	ERR
+en	in 2 mos	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in 2 s	ERR
+en	in 2 s	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in 2 sec	ERR
+en	in 2 sec	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in 2 second	ERR
+en	in 2 second	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in 2 seconds	ERR
+en	in 2 seconds	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in 2 secs	ERR
+en	in 2 secs	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in 2 w	ERR
+en	in 2 w	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in 2 week	ERR
+en	in 2 week	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in 2 weeks	ERR
+en	in 2 weeks	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in 2 wk	ERR
+en	in 2 wk	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in 2 wks	ERR
+en	in 2 wks	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in 2 y	ERR
+en	in 2 y	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in 2 year	ERR
+en	in 2 year	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in 2 years	ERR
+en	in 2 years	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in 2 yr	ERR
+en	in 2 yr	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in 2 yrs	ERR
+en	in 2 yrs	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in 3 Stunden	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+en	in 3 Stunden	ERR
+de	in 3 Tagen	Relative(RelativeTime { amount: 3, unit: Day, direction: Future })
+en	in 3 Tagen	ERR
+de	in 3 days	ERR
+en	in 3 days	Relative(RelativeTime { amount: 3, unit: Day, direction: Future })
+de	in 3 hours	ERR
+en	in 3 hours	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in 3 months	ERR
+en	in 3 months	Relative(RelativeTime { amount: 3, unit: Month, direction: Future })
+de	in 30 Minuten	Relative(RelativeTime { amount: 30, unit: Minute, direction: Future })
+en	in 30 Minuten	ERR
+de	in 30 Sekunden	Relative(RelativeTime { amount: 30, unit: Second, direction: Future })
+en	in 30 Sekunden	ERR
+de	in 30 minutes	ERR
+en	in 30 minutes	Relative(RelativeTime { amount: 30, unit: Minute, direction: Future })
+de	in 30 seconds	ERR
+en	in 30 seconds	Relative(RelativeTime { amount: 30, unit: Second, direction: Future })
+de	in 5	ERR
+en	in 5	ERR
+de	in 5 Minuten	Relative(RelativeTime { amount: 5, unit: Minute, direction: Future })
+en	in 5 Minuten	ERR
+de	in 5 Sekunden	Relative(RelativeTime { amount: 5, unit: Second, direction: Future })
+en	in 5 Sekunden	ERR
+de	in 5 blargs	ERR
+en	in 5 blargs	ERR
+de	in 5 d	ERR
+en	in 5 d	Relative(RelativeTime { amount: 5, unit: Day, direction: Future })
+de	in 5 day	ERR
+en	in 5 day	Relative(RelativeTime { amount: 5, unit: Day, direction: Future })
+de	in 5 days	ERR
+en	in 5 days	Relative(RelativeTime { amount: 5, unit: Day, direction: Future })
+de	in 5 h	ERR
+en	in 5 h	Relative(RelativeTime { amount: 5, unit: Hour, direction: Future })
+de	in 5 hour	ERR
+en	in 5 hour	Relative(RelativeTime { amount: 5, unit: Hour, direction: Future })
+de	in 5 hours	ERR
+en	in 5 hours	Relative(RelativeTime { amount: 5, unit: Hour, direction: Future })
+de	in 5 hr	ERR
+en	in 5 hr	Relative(RelativeTime { amount: 5, unit: Hour, direction: Future })
+de	in 5 hrs	ERR
+en	in 5 hrs	Relative(RelativeTime { amount: 5, unit: Hour, direction: Future })
+de	in 5 m	ERR
+en	in 5 m	Relative(RelativeTime { amount: 5, unit: Minute, direction: Future })
+de	in 5 min	Relative(RelativeTime { amount: 5, unit: Minute, direction: Future })
+en	in 5 min	Relative(RelativeTime { amount: 5, unit: Minute, direction: Future })
+de	in 5 mins	ERR
+en	in 5 mins	Relative(RelativeTime { amount: 5, unit: Minute, direction: Future })
+de	in 5 minute	ERR
+en	in 5 minute	Relative(RelativeTime { amount: 5, unit: Minute, direction: Future })
+de	in 5 minutes	ERR
+en	in 5 minutes	Relative(RelativeTime { amount: 5, unit: Minute, direction: Future })
+de	in 5 minuts	ERR
+en	in 5 minuts	ERR
+de	in 5 mo	ERR
+en	in 5 mo	Relative(RelativeTime { amount: 5, unit: Month, direction: Future })
+de	in 5 month	ERR
+en	in 5 month	Relative(RelativeTime { amount: 5, unit: Month, direction: Future })
+de	in 5 months	ERR
+en	in 5 months	Relative(RelativeTime { amount: 5, unit: Month, direction: Future })
+de	in 5 mos	ERR
+en	in 5 mos	Relative(RelativeTime { amount: 5, unit: Month, direction: Future })
+de	in 5 s	ERR
+en	in 5 s	Relative(RelativeTime { amount: 5, unit: Second, direction: Future })
+de	in 5 sec	ERR
+en	in 5 sec	Relative(RelativeTime { amount: 5, unit: Second, direction: Future })
+de	in 5 second	ERR
+en	in 5 second	Relative(RelativeTime { amount: 5, unit: Second, direction: Future })
+de	in 5 seconds	ERR
+en	in 5 seconds	Relative(RelativeTime { amount: 5, unit: Second, direction: Future })
+de	in 5 secs	ERR
+en	in 5 secs	Relative(RelativeTime { amount: 5, unit: Second, direction: Future })
+de	in 5 w	ERR
+en	in 5 w	Relative(RelativeTime { amount: 5, unit: Week, direction: Future })
+de	in 5 week	ERR
+en	in 5 week	Relative(RelativeTime { amount: 5, unit: Week, direction: Future })
+de	in 5 weeks	ERR
+en	in 5 weeks	Relative(RelativeTime { amount: 5, unit: Week, direction: Future })
+de	in 5 wk	ERR
+en	in 5 wk	Relative(RelativeTime { amount: 5, unit: Week, direction: Future })
+de	in 5 wks	ERR
+en	in 5 wks	Relative(RelativeTime { amount: 5, unit: Week, direction: Future })
+de	in 5 y	ERR
+en	in 5 y	Relative(RelativeTime { amount: 5, unit: Year, direction: Future })
+de	in 5 year	ERR
+en	in 5 year	Relative(RelativeTime { amount: 5, unit: Year, direction: Future })
+de	in 5 years	ERR
+en	in 5 years	Relative(RelativeTime { amount: 5, unit: Year, direction: Future })
+de	in 5 yr	ERR
+en	in 5 yr	Relative(RelativeTime { amount: 5, unit: Year, direction: Future })
+de	in 5 yrs	ERR
+en	in 5 yrs	Relative(RelativeTime { amount: 5, unit: Year, direction: Future })
+de	in 6 months	ERR
+en	in 6 months	Relative(RelativeTime { amount: 6, unit: Month, direction: Future })
+de	in a couple d	ERR
+en	in a couple d	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in a couple day	ERR
+en	in a couple day	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in a couple days	ERR
+en	in a couple days	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in a couple h	ERR
+en	in a couple h	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in a couple hour	ERR
+en	in a couple hour	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in a couple hours	ERR
+en	in a couple hours	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in a couple hr	ERR
+en	in a couple hr	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in a couple hrs	ERR
+en	in a couple hrs	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in a couple m	ERR
+en	in a couple m	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in a couple min	ERR
+en	in a couple min	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in a couple mins	ERR
+en	in a couple mins	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in a couple minute	ERR
+en	in a couple minute	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in a couple minutes	ERR
+en	in a couple minutes	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in a couple mo	ERR
+en	in a couple mo	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in a couple month	ERR
+en	in a couple month	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in a couple months	ERR
+en	in a couple months	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in a couple mos	ERR
+en	in a couple mos	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in a couple s	ERR
+en	in a couple s	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in a couple sec	ERR
+en	in a couple sec	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in a couple second	ERR
+en	in a couple second	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in a couple seconds	ERR
+en	in a couple seconds	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in a couple secs	ERR
+en	in a couple secs	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in a couple w	ERR
+en	in a couple w	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in a couple week	ERR
+en	in a couple week	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in a couple weeks	ERR
+en	in a couple weeks	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in a couple wk	ERR
+en	in a couple wk	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in a couple wks	ERR
+en	in a couple wks	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in a couple y	ERR
+en	in a couple y	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in a couple year	ERR
+en	in a couple year	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in a couple years	ERR
+en	in a couple years	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in a couple yr	ERR
+en	in a couple yr	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in a couple yrs	ERR
+en	in a couple yrs	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in a d	ERR
+en	in a d	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in a day	ERR
+en	in a day	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in a days	ERR
+en	in a days	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in a dozen d	ERR
+en	in a dozen d	Relative(RelativeTime { amount: 12, unit: Day, direction: Future })
+de	in a dozen day	ERR
+en	in a dozen day	Relative(RelativeTime { amount: 12, unit: Day, direction: Future })
+de	in a dozen days	ERR
+en	in a dozen days	Relative(RelativeTime { amount: 12, unit: Day, direction: Future })
+de	in a dozen h	ERR
+en	in a dozen h	Relative(RelativeTime { amount: 12, unit: Hour, direction: Future })
+de	in a dozen hour	ERR
+en	in a dozen hour	Relative(RelativeTime { amount: 12, unit: Hour, direction: Future })
+de	in a dozen hours	ERR
+en	in a dozen hours	Relative(RelativeTime { amount: 12, unit: Hour, direction: Future })
+de	in a dozen hr	ERR
+en	in a dozen hr	Relative(RelativeTime { amount: 12, unit: Hour, direction: Future })
+de	in a dozen hrs	ERR
+en	in a dozen hrs	Relative(RelativeTime { amount: 12, unit: Hour, direction: Future })
+de	in a dozen m	ERR
+en	in a dozen m	Relative(RelativeTime { amount: 12, unit: Minute, direction: Future })
+de	in a dozen min	ERR
+en	in a dozen min	Relative(RelativeTime { amount: 12, unit: Minute, direction: Future })
+de	in a dozen mins	ERR
+en	in a dozen mins	Relative(RelativeTime { amount: 12, unit: Minute, direction: Future })
+de	in a dozen minute	ERR
+en	in a dozen minute	Relative(RelativeTime { amount: 12, unit: Minute, direction: Future })
+de	in a dozen minutes	ERR
+en	in a dozen minutes	Relative(RelativeTime { amount: 12, unit: Minute, direction: Future })
+de	in a dozen mo	ERR
+en	in a dozen mo	Relative(RelativeTime { amount: 12, unit: Month, direction: Future })
+de	in a dozen month	ERR
+en	in a dozen month	Relative(RelativeTime { amount: 12, unit: Month, direction: Future })
+de	in a dozen months	ERR
+en	in a dozen months	Relative(RelativeTime { amount: 12, unit: Month, direction: Future })
+de	in a dozen mos	ERR
+en	in a dozen mos	Relative(RelativeTime { amount: 12, unit: Month, direction: Future })
+de	in a dozen s	ERR
+en	in a dozen s	Relative(RelativeTime { amount: 12, unit: Second, direction: Future })
+de	in a dozen sec	ERR
+en	in a dozen sec	Relative(RelativeTime { amount: 12, unit: Second, direction: Future })
+de	in a dozen second	ERR
+en	in a dozen second	Relative(RelativeTime { amount: 12, unit: Second, direction: Future })
+de	in a dozen seconds	ERR
+en	in a dozen seconds	Relative(RelativeTime { amount: 12, unit: Second, direction: Future })
+de	in a dozen secs	ERR
+en	in a dozen secs	Relative(RelativeTime { amount: 12, unit: Second, direction: Future })
+de	in a dozen w	ERR
+en	in a dozen w	Relative(RelativeTime { amount: 12, unit: Week, direction: Future })
+de	in a dozen week	ERR
+en	in a dozen week	Relative(RelativeTime { amount: 12, unit: Week, direction: Future })
+de	in a dozen weeks	ERR
+en	in a dozen weeks	Relative(RelativeTime { amount: 12, unit: Week, direction: Future })
+de	in a dozen wk	ERR
+en	in a dozen wk	Relative(RelativeTime { amount: 12, unit: Week, direction: Future })
+de	in a dozen wks	ERR
+en	in a dozen wks	Relative(RelativeTime { amount: 12, unit: Week, direction: Future })
+de	in a dozen y	ERR
+en	in a dozen y	Relative(RelativeTime { amount: 12, unit: Year, direction: Future })
+de	in a dozen year	ERR
+en	in a dozen year	Relative(RelativeTime { amount: 12, unit: Year, direction: Future })
+de	in a dozen years	ERR
+en	in a dozen years	Relative(RelativeTime { amount: 12, unit: Year, direction: Future })
+de	in a dozen yr	ERR
+en	in a dozen yr	Relative(RelativeTime { amount: 12, unit: Year, direction: Future })
+de	in a dozen yrs	ERR
+en	in a dozen yrs	Relative(RelativeTime { amount: 12, unit: Year, direction: Future })
+de	in a few d	ERR
+en	in a few d	Relative(RelativeTime { amount: 3, unit: Day, direction: Future })
+de	in a few day	ERR
+en	in a few day	Relative(RelativeTime { amount: 3, unit: Day, direction: Future })
+de	in a few days	ERR
+en	in a few days	Relative(RelativeTime { amount: 3, unit: Day, direction: Future })
+de	in a few h	ERR
+en	in a few h	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in a few hour	ERR
+en	in a few hour	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in a few hours	ERR
+en	in a few hours	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in a few hr	ERR
+en	in a few hr	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in a few hrs	ERR
+en	in a few hrs	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in a few m	ERR
+en	in a few m	Relative(RelativeTime { amount: 3, unit: Minute, direction: Future })
+de	in a few min	ERR
+en	in a few min	Relative(RelativeTime { amount: 3, unit: Minute, direction: Future })
+de	in a few mins	ERR
+en	in a few mins	Relative(RelativeTime { amount: 3, unit: Minute, direction: Future })
+de	in a few minute	ERR
+en	in a few minute	Relative(RelativeTime { amount: 3, unit: Minute, direction: Future })
+de	in a few minutes	ERR
+en	in a few minutes	Relative(RelativeTime { amount: 3, unit: Minute, direction: Future })
+de	in a few mo	ERR
+en	in a few mo	Relative(RelativeTime { amount: 3, unit: Month, direction: Future })
+de	in a few month	ERR
+en	in a few month	Relative(RelativeTime { amount: 3, unit: Month, direction: Future })
+de	in a few months	ERR
+en	in a few months	Relative(RelativeTime { amount: 3, unit: Month, direction: Future })
+de	in a few mos	ERR
+en	in a few mos	Relative(RelativeTime { amount: 3, unit: Month, direction: Future })
+de	in a few s	ERR
+en	in a few s	Relative(RelativeTime { amount: 3, unit: Second, direction: Future })
+de	in a few sec	ERR
+en	in a few sec	Relative(RelativeTime { amount: 3, unit: Second, direction: Future })
+de	in a few second	ERR
+en	in a few second	Relative(RelativeTime { amount: 3, unit: Second, direction: Future })
+de	in a few seconds	ERR
+en	in a few seconds	Relative(RelativeTime { amount: 3, unit: Second, direction: Future })
+de	in a few secs	ERR
+en	in a few secs	Relative(RelativeTime { amount: 3, unit: Second, direction: Future })
+de	in a few w	ERR
+en	in a few w	Relative(RelativeTime { amount: 3, unit: Week, direction: Future })
+de	in a few week	ERR
+en	in a few week	Relative(RelativeTime { amount: 3, unit: Week, direction: Future })
+de	in a few weeks	ERR
+en	in a few weeks	Relative(RelativeTime { amount: 3, unit: Week, direction: Future })
+de	in a few wk	ERR
+en	in a few wk	Relative(RelativeTime { amount: 3, unit: Week, direction: Future })
+de	in a few wks	ERR
+en	in a few wks	Relative(RelativeTime { amount: 3, unit: Week, direction: Future })
+de	in a few y	ERR
+en	in a few y	Relative(RelativeTime { amount: 3, unit: Year, direction: Future })
+de	in a few year	ERR
+en	in a few year	Relative(RelativeTime { amount: 3, unit: Year, direction: Future })
+de	in a few years	ERR
+en	in a few years	Relative(RelativeTime { amount: 3, unit: Year, direction: Future })
+de	in a few yr	ERR
+en	in a few yr	Relative(RelativeTime { amount: 3, unit: Year, direction: Future })
+de	in a few yrs	ERR
+en	in a few yrs	Relative(RelativeTime { amount: 3, unit: Year, direction: Future })
+de	in a h	ERR
+en	in a h	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in a hour	ERR
+en	in a hour	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in a hours	ERR
+en	in a hours	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in a hr	ERR
+en	in a hr	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in a hrs	ERR
+en	in a hrs	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in a m	ERR
+en	in a m	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in a min	ERR
+en	in a min	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in a mins	ERR
+en	in a mins	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in a minute	ERR
+en	in a minute	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in a minutes	ERR
+en	in a minutes	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in a mo	ERR
+en	in a mo	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in a month	ERR
+en	in a month	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in a months	ERR
+en	in a months	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in a mos	ERR
+en	in a mos	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in a s	ERR
+en	in a s	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in a sec	ERR
+en	in a sec	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in a second	ERR
+en	in a second	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in a seconds	ERR
+en	in a seconds	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in a secs	ERR
+en	in a secs	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in a w	ERR
+en	in a w	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in a week	ERR
+en	in a week	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in a weeks	ERR
+en	in a weeks	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in a wk	ERR
+en	in a wk	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in a wks	ERR
+en	in a wks	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in a y	ERR
+en	in a y	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in a year	ERR
+en	in a year	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in a years	ERR
+en	in a years	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in a yr	ERR
+en	in a yr	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in a yrs	ERR
+en	in a yrs	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in an d	ERR
+en	in an d	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in an day	ERR
+en	in an day	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in an days	ERR
+en	in an days	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in an h	ERR
+en	in an h	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in an hour	ERR
+en	in an hour	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in an hours	ERR
+en	in an hours	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in an hr	ERR
+en	in an hr	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in an hrs	ERR
+en	in an hrs	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in an m	ERR
+en	in an m	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in an min	ERR
+en	in an min	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in an mins	ERR
+en	in an mins	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in an minute	ERR
+en	in an minute	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in an minutes	ERR
+en	in an minutes	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in an mo	ERR
+en	in an mo	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in an month	ERR
+en	in an month	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in an months	ERR
+en	in an months	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in an mos	ERR
+en	in an mos	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in an s	ERR
+en	in an s	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in an sec	ERR
+en	in an sec	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in an second	ERR
+en	in an second	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in an seconds	ERR
+en	in an seconds	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in an secs	ERR
+en	in an secs	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in an w	ERR
+en	in an w	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in an week	ERR
+en	in an week	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in an weeks	ERR
+en	in an weeks	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in an wk	ERR
+en	in an wk	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in an wks	ERR
+en	in an wks	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in an y	ERR
+en	in an y	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in an year	ERR
+en	in an year	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in an years	ERR
+en	in an years	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in an yr	ERR
+en	in an yr	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in an yrs	ERR
+en	in an yrs	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in couple of d	ERR
+en	in couple of d	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in couple of day	ERR
+en	in couple of day	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in couple of days	ERR
+en	in couple of days	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in couple of h	ERR
+en	in couple of h	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in couple of hour	ERR
+en	in couple of hour	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in couple of hours	ERR
+en	in couple of hours	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in couple of hr	ERR
+en	in couple of hr	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in couple of hrs	ERR
+en	in couple of hrs	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in couple of m	ERR
+en	in couple of m	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in couple of min	ERR
+en	in couple of min	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in couple of mins	ERR
+en	in couple of mins	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in couple of minute	ERR
+en	in couple of minute	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in couple of minutes	ERR
+en	in couple of minutes	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in couple of mo	ERR
+en	in couple of mo	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in couple of month	ERR
+en	in couple of month	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in couple of months	ERR
+en	in couple of months	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in couple of mos	ERR
+en	in couple of mos	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in couple of s	ERR
+en	in couple of s	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in couple of sec	ERR
+en	in couple of sec	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in couple of second	ERR
+en	in couple of second	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in couple of seconds	ERR
+en	in couple of seconds	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in couple of secs	ERR
+en	in couple of secs	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in couple of w	ERR
+en	in couple of w	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in couple of week	ERR
+en	in couple of week	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in couple of weeks	ERR
+en	in couple of weeks	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in couple of wk	ERR
+en	in couple of wk	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in couple of wks	ERR
+en	in couple of wks	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in couple of y	ERR
+en	in couple of y	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in couple of year	ERR
+en	in couple of year	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in couple of years	ERR
+en	in couple of years	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in couple of yr	ERR
+en	in couple of yr	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in couple of yrs	ERR
+en	in couple of yrs	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in einem Jahr	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+en	in einem Jahr	ERR
+de	in einem Monat	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+en	in einem Monat	ERR
+de	in einem Tag	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+en	in einem Tag	ERR
+de	in einer Minute	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+en	in einer Minute	ERR
+de	in einer Sekunde	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+en	in einer Sekunde	ERR
+de	in einer Stunde	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+en	in einer Stunde	ERR
+de	in einer Woche	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+en	in einer Woche	ERR
+de	in one d	ERR
+en	in one d	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in one day	ERR
+en	in one day	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in one days	ERR
+en	in one days	Relative(RelativeTime { amount: 1, unit: Day, direction: Future })
+de	in one h	ERR
+en	in one h	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in one hour	ERR
+en	in one hour	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in one hours	ERR
+en	in one hours	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in one hr	ERR
+en	in one hr	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in one hrs	ERR
+en	in one hrs	Relative(RelativeTime { amount: 1, unit: Hour, direction: Future })
+de	in one m	ERR
+en	in one m	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in one min	ERR
+en	in one min	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in one mins	ERR
+en	in one mins	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in one minute	ERR
+en	in one minute	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in one minutes	ERR
+en	in one minutes	Relative(RelativeTime { amount: 1, unit: Minute, direction: Future })
+de	in one mo	ERR
+en	in one mo	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in one month	ERR
+en	in one month	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in one months	ERR
+en	in one months	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in one mos	ERR
+en	in one mos	Relative(RelativeTime { amount: 1, unit: Month, direction: Future })
+de	in one s	ERR
+en	in one s	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in one sec	ERR
+en	in one sec	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in one second	ERR
+en	in one second	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in one seconds	ERR
+en	in one seconds	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in one secs	ERR
+en	in one secs	Relative(RelativeTime { amount: 1, unit: Second, direction: Future })
+de	in one w	ERR
+en	in one w	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in one week	ERR
+en	in one week	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in one weeks	ERR
+en	in one weeks	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in one wk	ERR
+en	in one wk	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in one wks	ERR
+en	in one wks	Relative(RelativeTime { amount: 1, unit: Week, direction: Future })
+de	in one y	ERR
+en	in one y	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in one year	ERR
+en	in one year	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in one years	ERR
+en	in one years	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in one yr	ERR
+en	in one yr	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in one yrs	ERR
+en	in one yrs	Relative(RelativeTime { amount: 1, unit: Year, direction: Future })
+de	in three d	ERR
+en	in three d	Relative(RelativeTime { amount: 3, unit: Day, direction: Future })
+de	in three day	ERR
+en	in three day	Relative(RelativeTime { amount: 3, unit: Day, direction: Future })
+de	in three days	ERR
+en	in three days	Relative(RelativeTime { amount: 3, unit: Day, direction: Future })
+de	in three h	ERR
+en	in three h	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in three hour	ERR
+en	in three hour	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in three hours	ERR
+en	in three hours	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in three hr	ERR
+en	in three hr	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in three hrs	ERR
+en	in three hrs	Relative(RelativeTime { amount: 3, unit: Hour, direction: Future })
+de	in three m	ERR
+en	in three m	Relative(RelativeTime { amount: 3, unit: Minute, direction: Future })
+de	in three min	ERR
+en	in three min	Relative(RelativeTime { amount: 3, unit: Minute, direction: Future })
+de	in three mins	ERR
+en	in three mins	Relative(RelativeTime { amount: 3, unit: Minute, direction: Future })
+de	in three minute	ERR
+en	in three minute	Relative(RelativeTime { amount: 3, unit: Minute, direction: Future })
+de	in three minutes	ERR
+en	in three minutes	Relative(RelativeTime { amount: 3, unit: Minute, direction: Future })
+de	in three mo	ERR
+en	in three mo	Relative(RelativeTime { amount: 3, unit: Month, direction: Future })
+de	in three month	ERR
+en	in three month	Relative(RelativeTime { amount: 3, unit: Month, direction: Future })
+de	in three months	ERR
+en	in three months	Relative(RelativeTime { amount: 3, unit: Month, direction: Future })
+de	in three mos	ERR
+en	in three mos	Relative(RelativeTime { amount: 3, unit: Month, direction: Future })
+de	in three s	ERR
+en	in three s	Relative(RelativeTime { amount: 3, unit: Second, direction: Future })
+de	in three sec	ERR
+en	in three sec	Relative(RelativeTime { amount: 3, unit: Second, direction: Future })
+de	in three second	ERR
+en	in three second	Relative(RelativeTime { amount: 3, unit: Second, direction: Future })
+de	in three seconds	ERR
+en	in three seconds	Relative(RelativeTime { amount: 3, unit: Second, direction: Future })
+de	in three secs	ERR
+en	in three secs	Relative(RelativeTime { amount: 3, unit: Second, direction: Future })
+de	in three w	ERR
+en	in three w	Relative(RelativeTime { amount: 3, unit: Week, direction: Future })
+de	in three week	ERR
+en	in three week	Relative(RelativeTime { amount: 3, unit: Week, direction: Future })
+de	in three weeks	ERR
+en	in three weeks	Relative(RelativeTime { amount: 3, unit: Week, direction: Future })
+de	in three wk	ERR
+en	in three wk	Relative(RelativeTime { amount: 3, unit: Week, direction: Future })
+de	in three wks	ERR
+en	in three wks	Relative(RelativeTime { amount: 3, unit: Week, direction: Future })
+de	in three y	ERR
+en	in three y	Relative(RelativeTime { amount: 3, unit: Year, direction: Future })
+de	in three year	ERR
+en	in three year	Relative(RelativeTime { amount: 3, unit: Year, direction: Future })
+de	in three years	ERR
+en	in three years	Relative(RelativeTime { amount: 3, unit: Year, direction: Future })
+de	in three yr	ERR
+en	in three yr	Relative(RelativeTime { amount: 3, unit: Year, direction: Future })
+de	in three yrs	ERR
+en	in three yrs	Relative(RelativeTime { amount: 3, unit: Year, direction: Future })
+de	in two d	ERR
+en	in two d	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in two day	ERR
+en	in two day	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in two days	ERR
+en	in two days	Relative(RelativeTime { amount: 2, unit: Day, direction: Future })
+de	in two h	ERR
+en	in two h	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in two hour	ERR
+en	in two hour	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in two hours	ERR
+en	in two hours	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in two hr	ERR
+en	in two hr	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in two hrs	ERR
+en	in two hrs	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	in two m	ERR
+en	in two m	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in two min	ERR
+en	in two min	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in two mins	ERR
+en	in two mins	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in two minute	ERR
+en	in two minute	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in two minutes	ERR
+en	in two minutes	Relative(RelativeTime { amount: 2, unit: Minute, direction: Future })
+de	in two mo	ERR
+en	in two mo	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in two month	ERR
+en	in two month	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in two months	ERR
+en	in two months	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in two mos	ERR
+en	in two mos	Relative(RelativeTime { amount: 2, unit: Month, direction: Future })
+de	in two s	ERR
+en	in two s	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in two sec	ERR
+en	in two sec	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in two second	ERR
+en	in two second	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in two seconds	ERR
+en	in two seconds	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in two secs	ERR
+en	in two secs	Relative(RelativeTime { amount: 2, unit: Second, direction: Future })
+de	in two w	ERR
+en	in two w	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in two week	ERR
+en	in two week	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in two weeks	ERR
+en	in two weeks	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in two wk	ERR
+en	in two wk	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in two wks	ERR
+en	in two wks	Relative(RelativeTime { amount: 2, unit: Week, direction: Future })
+de	in two y	ERR
+en	in two y	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in two year	ERR
+en	in two year	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in two years	ERR
+en	in two years	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in two yr	ERR
+en	in two yr	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in two yrs	ERR
+en	in two yrs	Relative(RelativeTime { amount: 2, unit: Year, direction: Future })
+de	in {article} hour	ERR
+en	in {article} hour	ERR
+de	input	ERR
+en	input	ERR
+de	invalid calendar date	ERR
+en	invalid calendar date	ERR
+de	invalid date	ERR
+en	invalid date	ERR
+de	invalid expression	ERR
+en	invalid expression	ERR
+de	invalid input	ERR
+en	invalid input	ERR
+de	invalid time	ERR
+en	invalid time	ERR
+de	invalid time expression	ERR
+en	invalid time expression	ERR
+de	invalid timezone offset	ERR
+en	invalid timezone offset	ERR
+de	jetzt	Now
+en	jetzt	ERR
+de	keyword must be non-empty	ERR
+en	keyword must be non-empty	ERR
+de	last	ERR
+en	last	ERR
+de	last Friday	ERR
+en	last Friday	Day(Weekday { day: Friday, modifier: Some(Last) })
+de	last Monday	ERR
+en	last Monday	Day(Weekday { day: Monday, modifier: Some(Last) })
+de	last fri	ERR
+en	last fri	Day(Weekday { day: Friday, modifier: Some(Last) })
+de	last friday	ERR
+en	last friday	Day(Weekday { day: Friday, modifier: Some(Last) })
+de	last mon	ERR
+en	last mon	Day(Weekday { day: Monday, modifier: Some(Last) })
+de	last monday	ERR
+en	last monday	Day(Weekday { day: Monday, modifier: Some(Last) })
+de	last sun	ERR
+en	last sun	Day(Weekday { day: Sunday, modifier: Some(Last) })
+de	last sunday	ERR
+en	last sunday	Day(Weekday { day: Sunday, modifier: Some(Last) })
+de	last tuesday at 8:15 am	ERR
+en	last tuesday at 8:15 am	DayTime(DayTime { day: Weekday { day: Tuesday, modifier: Some(Last) }, time: Time { hour: 8, minute: 15, second: 0, meridiem: Some(AM) } })
+de	last wed	ERR
+en	last wed	Day(Weekday { day: Wednesday, modifier: Some(Last) })
+de	later	ERR
+en	later	Relative(RelativeTime { amount: 2, unit: Hour, direction: Future })
+de	later today	ERR
+en	later today	LaterToday
+de	later/later today	ERR
+en	later/later today	ERR
+de	letzte	ERR
+en	letzte	ERR
+de	letzten	ERR
+en	letzten	ERR
+de	letzten Freitag	Day(Weekday { day: Friday, modifier: Some(Last) })
+en	letzten Freitag	ERR
+de	m	ERR
+en	m	ERR
+de	mi	Day(Weekday { day: Wednesday, modifier: None })
+en	mi	ERR
+de	midnight	ERR
+en	midnight	Time(Time { hour: 0, minute: 0, second: 0, meridiem: None })
+de	min	ERR
+en	min	ERR
+de	mins	ERR
+en	mins	ERR
+de	minute	ERR
+en	minute	ERR
+de	minutes	ERR
+en	minutes	ERR
+de	minuts	ERR
+en	minuts	ERR
+de	mo	Day(Weekday { day: Monday, modifier: None })
+en	mo	ERR
+de	mon	ERR
+en	mon	Day(Weekday { day: Monday, modifier: None })
+de	monday	ERR
+en	monday	Day(Weekday { day: Monday, modifier: None })
+de	monday at 14:30	ERR
+en	monday at 14:30	DayTime(DayTime { day: Weekday { day: Monday, modifier: None }, time: Time { hour: 14, minute: 30, second: 0, meridiem: None } })
+de	month	ERR
+en	month	ERR
+de	month out of range	ERR
+en	month out of range	ERR
+de	months	ERR
+en	months	ERR
+de	morgen	Day(Tomorrow)
+en	morgen	ERR
+de	morgen UM 10:00 Uhr	DayTime(DayTime { day: Tomorrow, time: Time { hour: 10, minute: 0, second: 0, meridiem: None } })
+en	morgen UM 10:00 Uhr	ERR
+de	morgen um 10:00	DayTime(DayTime { day: Tomorrow, time: Time { hour: 10, minute: 0, second: 0, meridiem: None } })
+en	morgen um 10:00	ERR
+de	morgen um 10:00 Uhr	DayTime(DayTime { day: Tomorrow, time: Time { hour: 10, minute: 0, second: 0, meridiem: None } })
+en	morgen um 10:00 Uhr	ERR
+de	morgen um 15:30	DayTime(DayTime { day: Tomorrow, time: Time { hour: 15, minute: 30, second: 0, meridiem: None } })
+en	morgen um 15:30	ERR
+de	morgen um 24:00	ERR
+en	morgen um 24:00	ERR
+de	morning	ERR
+en	morning	ERR
+de	mos	ERR
+en	mos	ERR
+de	named time (noon, midnight, teatime)	ERR
+en	named time (noon, midnight, teatime)	ERR
+de	neun	ERR
+en	neun	ERR
+de	next	ERR
+en	next	ERR
+de	next Friday	ERR
+en	next Friday	Day(Weekday { day: Friday, modifier: Some(Next) })
+de	next Monday	ERR
+en	next Monday	Day(Weekday { day: Monday, modifier: Some(Next) })
+de	next Monday at 9:00 am	ERR
+en	next Monday at 9:00 am	DayTime(DayTime { day: Weekday { day: Monday, modifier: Some(Next) }, time: Time { hour: 9, minute: 0, second: 0, meridiem: Some(AM) } })
+de	next fri	ERR
+en	next fri	Day(Weekday { day: Friday, modifier: Some(Next) })
+de	next friday	ERR
+en	next friday	Day(Weekday { day: Friday, modifier: Some(Next) })
+de	next friday at 9:00 pm	ERR
+en	next friday at 9:00 pm	DayTime(DayTime { day: Weekday { day: Friday, modifier: Some(Next) }, time: Time { hour: 9, minute: 0, second: 0, meridiem: Some(PM) } })
+de	next mon	ERR
+en	next mon	Day(Weekday { day: Monday, modifier: Some(Next) })
+de	next monday	ERR
+en	next monday	Day(Weekday { day: Monday, modifier: Some(Next) })
+de	next monday at 9:00 am	ERR
+en	next monday at 9:00 am	DayTime(DayTime { day: Weekday { day: Monday, modifier: Some(Next) }, time: Time { hour: 9, minute: 0, second: 0, meridiem: Some(AM) } })
+de	next sun	ERR
+en	next sun	Day(Weekday { day: Sunday, modifier: Some(Next) })
+de	next sunday	ERR
+en	next sunday	Day(Weekday { day: Sunday, modifier: Some(Next) })
+de	next tuesday	ERR
+en	next tuesday	Day(Weekday { day: Tuesday, modifier: Some(Next) })
+de	next weekend	ERR
+en	next weekend	Day(Weekday { day: Saturday, modifier: Some(Next) })
+de	night	ERR
+en	night	ERR
+de	nine	ERR
+en	nine	ERR
+de	non-empty	ERR
+en	non-empty	ERR
+de	noon	ERR
+en	noon	Time(Time { hour: 12, minute: 0, second: 0, meridiem: None })
+de	now	ERR
+en	now	Now
+de	number	ERR
+en	number	ERR
+de	nächste	ERR
+en	nächste	ERR
+de	nächsten	ERR
+en	nächsten	ERR
+de	nächsten Freitag um 21:00	DayTime(DayTime { day: Weekday { day: Friday, modifier: Some(Next) }, time: Time { hour: 21, minute: 0, second: 0, meridiem: None } })
+en	nächsten Freitag um 21:00	ERR
+de	nächsten Montag	Day(Weekday { day: Monday, modifier: Some(Next) })
+en	nächsten Montag	ERR
+de	one	ERR
+en	one	ERR
+de	one d ago	ERR
+en	one d ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	one day ago	ERR
+en	one day ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	one days ago	ERR
+en	one days ago	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+de	one h ago	ERR
+en	one h ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	one hour ago	ERR
+en	one hour ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	one hours ago	ERR
+en	one hours ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	one hr ago	ERR
+en	one hr ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	one hrs ago	ERR
+en	one hrs ago	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+de	one m ago	ERR
+en	one m ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	one min ago	ERR
+en	one min ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	one mins ago	ERR
+en	one mins ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	one minute ago	ERR
+en	one minute ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	one minutes ago	ERR
+en	one minutes ago	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+de	one mo ago	ERR
+en	one mo ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	one month ago	ERR
+en	one month ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	one months ago	ERR
+en	one months ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	one mos ago	ERR
+en	one mos ago	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+de	one s ago	ERR
+en	one s ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	one sec ago	ERR
+en	one sec ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	one second ago	ERR
+en	one second ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	one seconds ago	ERR
+en	one seconds ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	one secs ago	ERR
+en	one secs ago	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+de	one w ago	ERR
+en	one w ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	one week ago	ERR
+en	one week ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	one weeks ago	ERR
+en	one weeks ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	one wk ago	ERR
+en	one wk ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	one wks ago	ERR
+en	one wks ago	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+de	one y ago	ERR
+en	one y ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	one year ago	ERR
+en	one year ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	one years ago	ERR
+en	one years ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	one yr ago	ERR
+en	one yr ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	one yrs ago	ERR
+en	one yrs ago	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+de	p.m.	ERR
+en	p.m.	ERR
+de	parsed	ERR
+en	parsed	ERR
+de	pm	ERR
+en	pm	ERR
+de	quarter past	ERR
+en	quarter past	ERR
+de	quarter past 3	ERR
+en	quarter past 3	Time(Time { hour: 3, minute: 15, second: 0, meridiem: None })
+de	quarter past 6	ERR
+en	quarter past 6	Time(Time { hour: 6, minute: 15, second: 0, meridiem: None })
+de	quarter past X	ERR
+en	quarter past X	ERR
+de	quarter to	ERR
+en	quarter to	ERR
+de	quarter to 3	ERR
+en	quarter to 3	Time(Time { hour: 2, minute: 45, second: 0, meridiem: None })
+de	quarter to X	ERR
+en	quarter to X	ERR
+de	quarter to midnight	ERR
+en	quarter to midnight	Time(Time { hour: 23, minute: 45, second: 0, meridiem: None })
+de	quarter to noon	ERR
+en	quarter to noon	Time(Time { hour: 11, minute: 45, second: 0, meridiem: None })
+de	s	ERR
+en	s	ERR
+de	sa	Day(Weekday { day: Saturday, modifier: None })
+en	sa	ERR
+de	sat	ERR
+en	sat	Day(Weekday { day: Saturday, modifier: None })
+de	saturday	ERR
+en	saturday	Day(Weekday { day: Saturday, modifier: None })
+de	sec	ERR
+en	sec	ERR
+de	sechs	ERR
+en	sechs	ERR
+de	second	ERR
+en	second	ERR
+de	seconds	ERR
+en	seconds	ERR
+de	secs	ERR
+en	secs	ERR
+de	sek	ERR
+en	sek	ERR
+de	seven	ERR
+en	seven	ERR
+de	sieben	ERR
+en	sieben	ERR
+de	six	ERR
+en	six	ERR
+de	so	Day(Weekday { day: Sunday, modifier: None })
+en	so	ERR
+de	standalone (tonight, EOD)	ERR
+en	standalone (tonight, EOD)	ERR
+de	std	ERR
+en	std	ERR
+de	sun	ERR
+en	sun	Day(Weekday { day: Sunday, modifier: None })
+de	sunday	ERR
+en	sunday	Day(Weekday { day: Sunday, modifier: None })
+de	teatime	ERR
+en	teatime	Time(Time { hour: 16, minute: 0, second: 0, meridiem: None })
+de	ten	ERR
+en	ten	ERR
+de	the	ERR
+en	the	ERR
+de	the day after tomorrow	ERR
+en	the day after tomorrow	Day(DayAfterTomorrow)
+de	the day before yesterday	ERR
+en	the day before yesterday	Day(DayBeforeYesterday)
+de	this	ERR
+en	this	ERR
+de	this Friday	ERR
+en	this Friday	Day(Weekday { day: Friday, modifier: None })
+de	this Monday	ERR
+en	this Monday	Day(Weekday { day: Monday, modifier: None })
+de	this afternoon	ERR
+en	this afternoon	DayTime(DayTime { day: Today, time: Time { hour: 13, minute: 0, second: 0, meridiem: None } })
+de	this evening	ERR
+en	this evening	DayTime(DayTime { day: Today, time: Time { hour: 18, minute: 0, second: 0, meridiem: None } })
+de	this fri	ERR
+en	this fri	Day(Weekday { day: Friday, modifier: None })
+de	this friday	ERR
+en	this friday	Day(Weekday { day: Friday, modifier: None })
+de	this mon	ERR
+en	this mon	Day(Weekday { day: Monday, modifier: None })
+de	this monday	ERR
+en	this monday	Day(Weekday { day: Monday, modifier: None })
+de	this morning	ERR
+en	this morning	DayTime(DayTime { day: Today, time: Time { hour: 8, minute: 0, second: 0, meridiem: None } })
+de	this morning/afternoon/evening	ERR
+en	this morning/afternoon/evening	ERR
+de	this night	ERR
+en	this night	DayTime(DayTime { day: Today, time: Time { hour: 20, minute: 0, second: 0, meridiem: None } })
+de	this sun	ERR
+en	this sun	Day(Weekday { day: Sunday, modifier: None })
+de	this sunday	ERR
+en	this sunday	Day(Weekday { day: Sunday, modifier: None })
+de	this weekend	ERR
+en	this weekend	Day(Weekday { day: Saturday, modifier: Some(This) })
+de	three	ERR
+en	three	ERR
+de	three d ago	ERR
+en	three d ago	Relative(RelativeTime { amount: 3, unit: Day, direction: Past })
+de	three day ago	ERR
+en	three day ago	Relative(RelativeTime { amount: 3, unit: Day, direction: Past })
+de	three days ago	ERR
+en	three days ago	Relative(RelativeTime { amount: 3, unit: Day, direction: Past })
+de	three h ago	ERR
+en	three h ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	three hour ago	ERR
+en	three hour ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	three hours ago	ERR
+en	three hours ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	three hr ago	ERR
+en	three hr ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	three hrs ago	ERR
+en	three hrs ago	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+de	three m ago	ERR
+en	three m ago	Relative(RelativeTime { amount: 3, unit: Minute, direction: Past })
+de	three min ago	ERR
+en	three min ago	Relative(RelativeTime { amount: 3, unit: Minute, direction: Past })
+de	three mins ago	ERR
+en	three mins ago	Relative(RelativeTime { amount: 3, unit: Minute, direction: Past })
+de	three minute ago	ERR
+en	three minute ago	Relative(RelativeTime { amount: 3, unit: Minute, direction: Past })
+de	three minutes ago	ERR
+en	three minutes ago	Relative(RelativeTime { amount: 3, unit: Minute, direction: Past })
+de	three mo ago	ERR
+en	three mo ago	Relative(RelativeTime { amount: 3, unit: Month, direction: Past })
+de	three month ago	ERR
+en	three month ago	Relative(RelativeTime { amount: 3, unit: Month, direction: Past })
+de	three months ago	ERR
+en	three months ago	Relative(RelativeTime { amount: 3, unit: Month, direction: Past })
+de	three mos ago	ERR
+en	three mos ago	Relative(RelativeTime { amount: 3, unit: Month, direction: Past })
+de	three s ago	ERR
+en	three s ago	Relative(RelativeTime { amount: 3, unit: Second, direction: Past })
+de	three sec ago	ERR
+en	three sec ago	Relative(RelativeTime { amount: 3, unit: Second, direction: Past })
+de	three second ago	ERR
+en	three second ago	Relative(RelativeTime { amount: 3, unit: Second, direction: Past })
+de	three seconds ago	ERR
+en	three seconds ago	Relative(RelativeTime { amount: 3, unit: Second, direction: Past })
+de	three secs ago	ERR
+en	three secs ago	Relative(RelativeTime { amount: 3, unit: Second, direction: Past })
+de	three w ago	ERR
+en	three w ago	Relative(RelativeTime { amount: 3, unit: Week, direction: Past })
+de	three week ago	ERR
+en	three week ago	Relative(RelativeTime { amount: 3, unit: Week, direction: Past })
+de	three weeks ago	ERR
+en	three weeks ago	Relative(RelativeTime { amount: 3, unit: Week, direction: Past })
+de	three wk ago	ERR
+en	three wk ago	Relative(RelativeTime { amount: 3, unit: Week, direction: Past })
+de	three wks ago	ERR
+en	three wks ago	Relative(RelativeTime { amount: 3, unit: Week, direction: Past })
+de	three y ago	ERR
+en	three y ago	Relative(RelativeTime { amount: 3, unit: Year, direction: Past })
+de	three year ago	ERR
+en	three year ago	Relative(RelativeTime { amount: 3, unit: Year, direction: Past })
+de	three years ago	ERR
+en	three years ago	Relative(RelativeTime { amount: 3, unit: Year, direction: Past })
+de	three yr ago	ERR
+en	three yr ago	Relative(RelativeTime { amount: 3, unit: Year, direction: Past })
+de	three yrs ago	ERR
+en	three yrs ago	Relative(RelativeTime { amount: 3, unit: Year, direction: Past })
+de	thu	ERR
+en	thu	Day(Weekday { day: Thursday, modifier: None })
+de	thursday	ERR
+en	thursday	Day(Weekday { day: Thursday, modifier: None })
+de	time of day	ERR
+en	time of day	ERR
+de	time unit	ERR
+en	time unit	ERR
+de	timezone hour offset out of range	ERR
+en	timezone hour offset out of range	ERR
+de	timezone minute offset out of range	ERR
+en	timezone minute offset out of range	ERR
+de	today	ERR
+en	today	Day(Today)
+de	today afternoon	ERR
+en	today afternoon	DayTime(DayTime { day: Today, time: Time { hour: 13, minute: 0, second: 0, meridiem: None } })
+de	today at 3:30 pm	ERR
+en	today at 3:30 pm	DayTime(DayTime { day: Today, time: Time { hour: 3, minute: 30, second: 0, meridiem: Some(PM) } })
+de	today evening	ERR
+en	today evening	DayTime(DayTime { day: Today, time: Time { hour: 18, minute: 0, second: 0, meridiem: None } })
+de	tomorrow	ERR
+en	tomorrow	Day(Tomorrow)
+de	tomorrow afternoon	ERR
+en	tomorrow afternoon	DayTime(DayTime { day: Tomorrow, time: Time { hour: 13, minute: 0, second: 0, meridiem: None } })
+de	tomorrow at 10:00 am	ERR
+en	tomorrow at 10:00 am	DayTime(DayTime { day: Tomorrow, time: Time { hour: 10, minute: 0, second: 0, meridiem: Some(AM) } })
+de	tomorrow at 12:00	ERR
+en	tomorrow at 12:00	DayTime(DayTime { day: Tomorrow, time: Time { hour: 12, minute: 0, second: 0, meridiem: None } })
+de	tomorrow at 13:00 pm	ERR
+en	tomorrow at 13:00 pm	ERR
+de	tomorrow at 24:00	ERR
+en	tomorrow at 24:00	ERR
+de	tomorrow at 2:00 pm	ERR
+en	tomorrow at 2:00 pm	DayTime(DayTime { day: Tomorrow, time: Time { hour: 2, minute: 0, second: 0, meridiem: Some(PM) } })
+de	tomorrow at 3:30 pm	ERR
+en	tomorrow at 3:30 pm	DayTime(DayTime { day: Tomorrow, time: Time { hour: 3, minute: 30, second: 0, meridiem: Some(PM) } })
+de	tomorrow at 3pm	ERR
+en	tomorrow at 3pm	DayTime(DayTime { day: Tomorrow, time: Time { hour: 3, minute: 0, second: 0, meridiem: Some(PM) } })
+de	tomorrow evening	ERR
+en	tomorrow evening	DayTime(DayTime { day: Tomorrow, time: Time { hour: 18, minute: 0, second: 0, meridiem: None } })
+de	tomorrow morning	ERR
+en	tomorrow morning	DayTime(DayTime { day: Tomorrow, time: Time { hour: 8, minute: 0, second: 0, meridiem: None } })
+de	tonight	ERR
+en	tonight	DayTime(DayTime { day: Today, time: Time { hour: 20, minute: 0, second: 0, meridiem: None } })
+de	tue	ERR
+en	tue	Day(Weekday { day: Tuesday, modifier: None })
+de	tuesday	ERR
+en	tuesday	Day(Weekday { day: Tuesday, modifier: None })
+de	two	ERR
+en	two	ERR
+de	two d ago	ERR
+en	two d ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	two day ago	ERR
+en	two day ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	two days ago	ERR
+en	two days ago	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+de	two h ago	ERR
+en	two h ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	two hour ago	ERR
+en	two hour ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	two hours ago	ERR
+en	two hours ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	two hr ago	ERR
+en	two hr ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	two hrs ago	ERR
+en	two hrs ago	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+de	two m ago	ERR
+en	two m ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	two min ago	ERR
+en	two min ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	two mins ago	ERR
+en	two mins ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	two minute ago	ERR
+en	two minute ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	two minutes ago	ERR
+en	two minutes ago	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+de	two mo ago	ERR
+en	two mo ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	two month ago	ERR
+en	two month ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	two months ago	ERR
+en	two months ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	two mos ago	ERR
+en	two mos ago	Relative(RelativeTime { amount: 2, unit: Month, direction: Past })
+de	two s ago	ERR
+en	two s ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	two sec ago	ERR
+en	two sec ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	two second ago	ERR
+en	two second ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	two seconds ago	ERR
+en	two seconds ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	two secs ago	ERR
+en	two secs ago	Relative(RelativeTime { amount: 2, unit: Second, direction: Past })
+de	two w ago	ERR
+en	two w ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	two week ago	ERR
+en	two week ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	two weeks ago	ERR
+en	two weeks ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	two wk ago	ERR
+en	two wk ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	two wks ago	ERR
+en	two wks ago	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+de	two y ago	ERR
+en	two y ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	two year ago	ERR
+en	two year ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	two years ago	ERR
+en	two years ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	two yr ago	ERR
+en	two yr ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	two yrs ago	ERR
+en	two yrs ago	Relative(RelativeTime { amount: 2, unit: Year, direction: Past })
+de	uhr	ERR
+en	uhr	ERR
+de	um	ERR
+en	um	ERR
+de	unexpected token	ERR
+en	unexpected token	ERR
+de	unexpected {found}	ERR
+en	unexpected {found}	ERR
+de	vier	ERR
+en	vier	ERR
+de	vor	ERR
+en	vor	ERR
+de	vor 1 Tag	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+en	vor 1 Tag	ERR
+de	vor 10 Minuten	Relative(RelativeTime { amount: 10, unit: Minute, direction: Past })
+en	vor 10 Minuten	ERR
+de	vor 2 Minuten	Relative(RelativeTime { amount: 2, unit: Minute, direction: Past })
+en	vor 2 Minuten	ERR
+de	vor 2 Stunden	Relative(RelativeTime { amount: 2, unit: Hour, direction: Past })
+en	vor 2 Stunden	ERR
+de	vor 2 Tagen	Relative(RelativeTime { amount: 2, unit: Day, direction: Past })
+en	vor 2 Tagen	ERR
+de	vor 2 Wochen	Relative(RelativeTime { amount: 2, unit: Week, direction: Past })
+en	vor 2 Wochen	ERR
+de	vor 3 Stunden	Relative(RelativeTime { amount: 3, unit: Hour, direction: Past })
+en	vor 3 Stunden	ERR
+de	vor 3 Tagen	Relative(RelativeTime { amount: 3, unit: Day, direction: Past })
+en	vor 3 Tagen	ERR
+de	vor 45 Sekunden	Relative(RelativeTime { amount: 45, unit: Second, direction: Past })
+en	vor 45 Sekunden	ERR
+de	vor 5 Minuten	Relative(RelativeTime { amount: 5, unit: Minute, direction: Past })
+en	vor 5 Minuten	ERR
+de	vor einem Jahr	Relative(RelativeTime { amount: 1, unit: Year, direction: Past })
+en	vor einem Jahr	ERR
+de	vor einem Monat	Relative(RelativeTime { amount: 1, unit: Month, direction: Past })
+en	vor einem Monat	ERR
+de	vor einem Tag	Relative(RelativeTime { amount: 1, unit: Day, direction: Past })
+en	vor einem Tag	ERR
+de	vor einer Minute	Relative(RelativeTime { amount: 1, unit: Minute, direction: Past })
+en	vor einer Minute	ERR
+de	vor einer Sekunde	Relative(RelativeTime { amount: 1, unit: Second, direction: Past })
+en	vor einer Sekunde	ERR
+de	vor einer Stunde	Relative(RelativeTime { amount: 1, unit: Hour, direction: Past })
+en	vor einer Stunde	ERR
+de	vor einer Woche	Relative(RelativeTime { amount: 1, unit: Week, direction: Past })
+en	vor einer Woche	ERR
+de	w	ERR
+en	w	ERR
+de	wed	ERR
+en	wed	Day(Weekday { day: Wednesday, modifier: None })
+de	wednesday	ERR
+en	wednesday	Day(Weekday { day: Wednesday, modifier: None })
+de	week	ERR
+en	week	ERR
+de	weekday	ERR
+en	weekday	ERR
+de	weeks	ERR
+en	weeks	ERR
+de	whitespace	ERR
+en	whitespace	ERR
+de	wk	ERR
+en	wk	ERR
+de	wks	ERR
+en	wks	ERR
+de	y	ERR
+en	y	ERR
+de	year	ERR
+en	year	ERR
+de	years	ERR
+en	years	ERR
+de	yesterday	ERR
+en	yesterday	Day(Yesterday)
+de	yesterday at 3pm	ERR
+en	yesterday at 3pm	DayTime(DayTime { day: Yesterday, time: Time { hour: 3, minute: 0, second: 0, meridiem: Some(PM) } })
+de	yr	ERR
+en	yr	ERR
+de	yrs	ERR
+en	yrs	ERR
+de	zehn	ERR
+en	zehn	ERR
+de	zwei	ERR
+en	zwei	ERR
+de	{:04}-{:02}-{:02}	ERR
+en	{:04}-{:02}-{:02}	ERR
+de	{ERR_TIMEZONE_CONVERSION}: {e}	ERR
+en	{ERR_TIMEZONE_CONVERSION}: {e}	ERR
