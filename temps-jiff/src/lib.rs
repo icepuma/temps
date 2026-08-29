@@ -25,7 +25,7 @@
 //! println!("In 5 minutes: {}", datetime);
 //!
 //! // Or use the provider directly
-//! let provider = JiffProvider;
+//! let provider = JiffProvider::new();
 //! let expr = temps_core::parse("tomorrow at 3:30 pm", Language::English).unwrap();
 //! let datetime = provider.parse_expression(expr).unwrap();
 //! ```
@@ -69,11 +69,49 @@ use temps_core::{
 /// use temps_jiff::JiffProvider;
 /// use temps_core::{TimeParser, parse, Language};
 ///
-/// let provider = JiffProvider;
+/// let provider = JiffProvider::new();
 /// let expr = parse("next Monday", Language::English).unwrap();
 /// let datetime = provider.parse_expression(expr).unwrap();
 /// ```
-pub struct JiffProvider;
+#[derive(Debug, Clone, Default)]
+pub struct JiffProvider {
+    /// Fixed instant to resolve against, or `None` to read the system clock.
+    now: Option<Zoned>,
+}
+
+impl JiffProvider {
+    /// A provider that resolves expressions against the system clock.
+    #[must_use]
+    pub fn new() -> Self {
+        Self { now: None }
+    }
+
+    /// A provider pinned to a fixed instant.
+    ///
+    /// Resolution of "now", "tomorrow" and every relative expression is
+    /// relative to this instant, which makes results reproducible — including
+    /// around daylight-saving transitions, where behaviour otherwise depends on
+    /// the day the code happens to run.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use jiff::civil::date;
+    /// use jiff::tz::TimeZone;
+    /// use temps_jiff::JiffProvider;
+    /// use temps_core::{Language, TimeParser, parse};
+    ///
+    /// let fixed = date(2024, 1, 31).at(10, 0, 0, 0).to_zoned(TimeZone::UTC).unwrap();
+    /// let provider = JiffProvider::at(fixed);
+    /// let expr = parse("tomorrow", Language::English).unwrap();
+    /// let resolved = provider.parse_expression(expr).unwrap();
+    /// assert_eq!(resolved.date().to_string(), "2024-02-01");
+    /// ```
+    #[must_use]
+    pub fn at(now: Zoned) -> Self {
+        Self { now: Some(now) }
+    }
+}
 
 fn jiff_date_components(year: u16, month: u8, day: u8) -> Result<(i16, i8, i8)> {
     Ok((
@@ -102,7 +140,7 @@ impl TimeParser for JiffProvider {
     type DateTime = Zoned;
 
     fn now(&self) -> Self::DateTime {
-        Zoned::now()
+        self.now.clone().unwrap_or_else(Zoned::now)
     }
 
     fn parse_expression(&self, expr: TimeExpression) -> Result<Self::DateTime> {
@@ -502,5 +540,5 @@ impl TimeParser for JiffProvider {
 /// - The jiff library returns an error during calculations
 pub fn parse_to_zoned(input: &str, language: Language) -> Result<Zoned> {
     let expr = temps_core::parse(input, language)?;
-    JiffProvider.parse_expression(expr)
+    JiffProvider::new().parse_expression(expr)
 }

@@ -62,7 +62,7 @@
 //! let expr = parse("in 2 hours", Language::English).unwrap();
 //!
 //! // Then convert to datetime
-//! let provider = ChronoProvider;
+//! let provider = ChronoProvider::new();
 //! let dt = provider.parse_expression(expr).unwrap();
 //! # }
 //! ```
