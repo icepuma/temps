@@ -1,32 +1,27 @@
-use chumsky::{error::Rich, prelude::*, text};
+use chumsky::{error::Rich, prelude::*};
 
 use crate::{
     DayReference, DayTime, Direction, LanguageParser, Meridiem, RelativeTime, Result, StandardDate,
     Time, TimeExpression, TimeUnit, Weekday, WeekdayModifier,
     common::{
-        ParserError, digit_number, four_digit_number, iso_datetime, keyword_ci, keywords_ci,
-        longest, two_digit_number,
+        ParserError, TokenInput, digit_number, four_digit_number, iso_datetime, opt_space,
+        phrase_ci, phrases_ci, punct, space, token_stream, two_digit_number, word_ci,
     },
     error::rich_errors_to_temps_error,
+    lexer::lex,
     time_utils,
 };
 
 /// Parser for English natural language time expressions.
 pub struct EnglishParser;
 
-fn whitespace_required<'a>() -> impl Parser<'a, &'a str, (), ParserError<'a>> + Clone {
-    one_of(" \t\n\r")
-        .labelled("whitespace")
-        .repeated()
-        .at_least(1)
-        .ignored()
-}
-
-fn number<'a>() -> impl Parser<'a, &'a str, i64, ParserError<'a>> + Clone {
-    // Source order is irrelevant: `keywords_ci` tries the longest keyword first.
+fn number<'t, 's: 't, I>() -> impl Parser<'t, I, i64, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     choice((
         digit_number(),
-        keywords_ci([
+        phrases_ci([
             ("a", 1i64),
             ("an", 1),
             ("one", 1),
@@ -49,8 +44,11 @@ fn number<'a>() -> impl Parser<'a, &'a str, i64, ParserError<'a>> + Clone {
     .labelled("number")
 }
 
-fn time_unit<'a>() -> impl Parser<'a, &'a str, TimeUnit, ParserError<'a>> + Clone {
-    keywords_ci([
+fn time_unit<'t, 's: 't, I>() -> impl Parser<'t, I, TimeUnit, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    phrases_ci([
         ("second", TimeUnit::Second),
         ("seconds", TimeUnit::Second),
         ("sec", TimeUnit::Second),
@@ -87,8 +85,11 @@ fn time_unit<'a>() -> impl Parser<'a, &'a str, TimeUnit, ParserError<'a>> + Clon
     .labelled("time unit")
 }
 
-fn weekday<'a>() -> impl Parser<'a, &'a str, Weekday, ParserError<'a>> + Clone {
-    keywords_ci([
+fn weekday<'t, 's: 't, I>() -> impl Parser<'t, I, Weekday, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    phrases_ci([
         ("monday", Weekday::Monday),
         ("mon", Weekday::Monday),
         ("tuesday", Weekday::Tuesday),
@@ -107,8 +108,11 @@ fn weekday<'a>() -> impl Parser<'a, &'a str, Weekday, ParserError<'a>> + Clone {
     .labelled("weekday")
 }
 
-fn day_shortcuts<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
-    keywords_ci([
+fn day_shortcuts<'t, 's: 't, I>() -> impl Parser<'t, I, DayReference, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    phrases_ci([
         ("today", DayReference::Today),
         ("yesterday", DayReference::Yesterday),
         ("tomorrow", DayReference::Tomorrow),
@@ -117,16 +121,23 @@ fn day_shortcuts<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>
     ])
 }
 
-fn weekday_modifier<'a>() -> impl Parser<'a, &'a str, WeekdayModifier, ParserError<'a>> + Clone {
+fn weekday_modifier<'t, 's: 't, I>()
+-> impl Parser<'t, I, WeekdayModifier, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     choice((
-        keyword_ci("last").to(WeekdayModifier::Last),
-        keyword_ci("next").to(WeekdayModifier::Next),
+        word_ci("last").to(WeekdayModifier::Last),
+        word_ci("next").to(WeekdayModifier::Next),
     ))
 }
 
-fn modified_weekday<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
+fn modified_weekday<'t, 's: 't, I>() -> impl Parser<'t, I, DayReference, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     weekday_modifier()
-        .then_ignore(whitespace_required())
+        .then_ignore(space())
         .then(weekday())
         .map(|(modifier, day)| DayReference::Weekday {
             day,
@@ -134,27 +145,45 @@ fn modified_weekday<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<
         })
 }
 
-fn simple_weekday<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
+fn simple_weekday<'t, 's: 't, I>() -> impl Parser<'t, I, DayReference, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     weekday().map(|day| DayReference::Weekday {
         day,
         modifier: None,
     })
 }
 
-fn day_reference<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
-    longest(vec![
-        the_day_after_tomorrow().boxed(),
-        the_day_before_yesterday().boxed(),
-        day_shortcuts().boxed(),
-        modified_weekday().boxed(),
-        this_weekday().boxed(),
-        weekend_ref().boxed(),
-        simple_weekday().boxed(),
-    ])
+fn day_reference<'t, 's: 't, I>() -> impl Parser<'t, I, DayReference, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    // A plain `choice` needs no left-factoring here: no alternative below can
+    // succeed on a proper token-prefix of another one's match, which is the
+    // only way `choice`'s commit-on-success could pick the wrong branch.
+    //
+    // The near misses, all of which resolve by backtracking:
+    //   - `the day after tomorrow` / `the day before yesterday` share `the day`
+    //     but diverge on the third token, so neither ever succeeds first;
+    //   - `next weekend` and `next Monday` share `next`, and `weekend` is not a
+    //     weekday, so `modified_weekday` fails without consuming;
+    //   - likewise `this weekend` against `this Monday`.
+    choice((
+        the_day_reference(),
+        day_shortcuts(),
+        modified_weekday(),
+        this_weekday(),
+        weekend_ref(),
+        simple_weekday(),
+    ))
 }
 
-fn meridiem<'a>() -> impl Parser<'a, &'a str, Meridiem, ParserError<'a>> + Clone {
-    keywords_ci([
+fn meridiem<'t, 's: 't, I>() -> impl Parser<'t, I, Meridiem, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    phrases_ci([
         ("am", Meridiem::AM),
         ("pm", Meridiem::PM),
         ("a.m.", Meridiem::AM),
@@ -163,13 +192,16 @@ fn meridiem<'a>() -> impl Parser<'a, &'a str, Meridiem, ParserError<'a>> + Clone
     .labelled("am/pm")
 }
 
-fn time_with_minutes<'a>()
--> impl Parser<'a, &'a str, (u8, u8, u8, Option<Meridiem>), ParserError<'a>> + Clone {
+fn time_with_minutes<'t, 's: 't, I>()
+-> impl Parser<'t, I, (u8, u8, u8, Option<Meridiem>), ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     two_digit_number()
-        .then_ignore(just(':'))
+        .then_ignore(punct(':'))
         .then(two_digit_number())
-        .then(just(':').ignore_then(two_digit_number()).or_not())
-        .then(text::whitespace().ignore_then(meridiem()).or_not())
+        .then(punct(':').ignore_then(two_digit_number()).or_not())
+        .then(opt_space().ignore_then(meridiem()).or_not())
         .try_map(|(((hour, minute), second), mer), span| {
             let second = second.unwrap_or(0);
             if time_utils::is_valid_time(hour, minute, second, mer) {
@@ -180,10 +212,13 @@ fn time_with_minutes<'a>()
         })
 }
 
-fn hour_meridiem<'a>()
--> impl Parser<'a, &'a str, (u8, u8, u8, Option<Meridiem>), ParserError<'a>> + Clone {
+fn hour_meridiem<'t, 's: 't, I>()
+-> impl Parser<'t, I, (u8, u8, u8, Option<Meridiem>), ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     two_digit_number()
-        .then(text::whitespace().ignore_then(meridiem()))
+        .then(opt_space().ignore_then(meridiem()))
         .try_map(|(hour, mer), span| {
             if time_utils::is_valid_time(hour, 0, 0, Some(mer)) {
                 Ok((hour, 0, 0, Some(mer)))
@@ -193,13 +228,19 @@ fn hour_meridiem<'a>()
         })
 }
 
-fn time_digits<'a>()
--> impl Parser<'a, &'a str, (u8, u8, u8, Option<Meridiem>), ParserError<'a>> + Clone {
+fn time_digits<'t, 's: 't, I>()
+-> impl Parser<'t, I, (u8, u8, u8, Option<Meridiem>), ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     choice((time_with_minutes(), hour_meridiem()))
 }
 
 /// Parse a raw hour (number or named time like "noon") for use in fractional expressions.
-fn raw_hour<'a>() -> impl Parser<'a, &'a str, u8, ParserError<'a>> + Clone {
+fn raw_hour<'t, 's: 't, I>() -> impl Parser<'t, I, u8, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     choice((
         two_digit_number().try_map(|h, span| {
             if h <= 23 {
@@ -208,26 +249,29 @@ fn raw_hour<'a>() -> impl Parser<'a, &'a str, u8, ParserError<'a>> + Clone {
                 Err(Rich::custom(span, "hour must be 0-23"))
             }
         }),
-        keyword_ci("noon").to(12u8),
-        keyword_ci("midnight").to(0u8),
+        word_ci("noon").to(12u8),
+        word_ci("midnight").to(0u8),
     ))
 }
 
 /// Parse fractional time: "half past X", "quarter past X", "quarter to X".
-fn fractional_time<'a>()
--> impl Parser<'a, &'a str, (u8, u8, u8, Option<Meridiem>), ParserError<'a>> + Clone {
-    let half_past = keyword_ci("half past")
-        .ignore_then(whitespace_required())
+fn fractional_time<'t, 's: 't, I>()
+-> impl Parser<'t, I, (u8, u8, u8, Option<Meridiem>), ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    let half_past = phrase_ci("half past")
+        .ignore_then(space())
         .ignore_then(raw_hour())
         .map(|h| (h, 30u8, 0u8, None::<Meridiem>));
 
-    let quarter_past = keyword_ci("quarter past")
-        .ignore_then(whitespace_required())
+    let quarter_past = phrase_ci("quarter past")
+        .ignore_then(space())
         .ignore_then(raw_hour())
         .map(|h| (h, 15u8, 0u8, None::<Meridiem>));
 
-    let quarter_to = keyword_ci("quarter to")
-        .ignore_then(whitespace_required())
+    let quarter_to = phrase_ci("quarter to")
+        .ignore_then(space())
         .ignore_then(raw_hour())
         .map(|h| {
             if h == 0 {
@@ -246,7 +290,10 @@ fn fractional_time<'a>()
     })
 }
 
-fn time_expr<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+fn time_expr<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     choice((
         fractional_time().map(|(hour, minute, second, meridiem)| {
             TimeExpression::Time(Time {
@@ -267,21 +314,24 @@ fn time_expr<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> 
     ))
 }
 
-fn named_time<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+fn named_time<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     choice((
-        keyword_ci("noon").to(TimeExpression::Time(Time {
+        word_ci("noon").to(TimeExpression::Time(Time {
             hour: 12,
             minute: 0,
             second: 0,
             meridiem: None,
         })),
-        keyword_ci("midnight").to(TimeExpression::Time(Time {
+        word_ci("midnight").to(TimeExpression::Time(Time {
             hour: 0,
             minute: 0,
             second: 0,
             meridiem: None,
         })),
-        keyword_ci("teatime").to(TimeExpression::Time(Time {
+        word_ci("teatime").to(TimeExpression::Time(Time {
             hour: 16,
             minute: 0,
             second: 0,
@@ -292,27 +342,30 @@ fn named_time<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>>
 
 /// Parse part-of-day: "morning", "afternoon", "evening", "night".
 /// Returns a Time with a default hour.
-fn part_of_day<'a>() -> impl Parser<'a, &'a str, Time, ParserError<'a>> + Clone {
+fn part_of_day<'t, 's: 't, I>() -> impl Parser<'t, I, Time, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     choice((
-        keyword_ci("morning").to(Time {
+        word_ci("morning").to(Time {
             hour: 8,
             minute: 0,
             second: 0,
             meridiem: None,
         }),
-        keyword_ci("afternoon").to(Time {
+        word_ci("afternoon").to(Time {
             hour: 13,
             minute: 0,
             second: 0,
             meridiem: None,
         }),
-        keyword_ci("evening").to(Time {
+        word_ci("evening").to(Time {
             hour: 18,
             minute: 0,
             second: 0,
             meridiem: None,
         }),
-        keyword_ci("night").to(Time {
+        word_ci("night").to(Time {
             hour: 20,
             minute: 0,
             second: 0,
@@ -321,18 +374,14 @@ fn part_of_day<'a>() -> impl Parser<'a, &'a str, Time, ParserError<'a>> + Clone 
     ))
 }
 
-/// Day reference followed by a part of day: "tomorrow morning", "today afternoon", etc.
-fn day_with_part_of_day<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
-    day_reference()
-        .then_ignore(whitespace_required())
-        .then(part_of_day())
-        .map(|(day, time)| TimeExpression::DayTime(DayTime { day, time }))
-}
-
 /// "this" + day-like expression: "this morning", "this afternoon", "this evening".
-fn this_part_of_day<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
-    keyword_ci("this")
-        .ignore_then(whitespace_required())
+fn this_part_of_day<'t, 's: 't, I>()
+-> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    word_ci("this")
+        .ignore_then(space())
         .ignore_then(part_of_day())
         .map(|time| {
             TimeExpression::DayTime(DayTime {
@@ -343,9 +392,12 @@ fn this_part_of_day<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserErro
 }
 
 /// "this" + weekday: "this Monday", "this Friday".
-fn this_weekday<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
-    keyword_ci("this")
-        .ignore_then(whitespace_required())
+fn this_weekday<'t, 's: 't, I>() -> impl Parser<'t, I, DayReference, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    word_ci("this")
+        .ignore_then(space())
         .ignore_then(weekday())
         .map(|day| DayReference::Weekday {
             day,
@@ -354,13 +406,16 @@ fn this_weekday<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>>
 }
 
 /// "this weekend" / "next weekend".
-fn weekend_ref<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
+fn weekend_ref<'t, 's: 't, I>() -> impl Parser<'t, I, DayReference, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     choice((
-        keyword_ci("this weekend").to(DayReference::Weekday {
+        phrase_ci("this weekend").to(DayReference::Weekday {
             day: Weekday::Saturday,
             modifier: Some(WeekdayModifier::This),
         }),
-        keyword_ci("next weekend").to(DayReference::Weekday {
+        phrase_ci("next weekend").to(DayReference::Weekday {
             day: Weekday::Saturday,
             modifier: Some(WeekdayModifier::Next),
         }),
@@ -368,9 +423,13 @@ fn weekend_ref<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> 
 }
 
 /// Standalone expressions that map to DayTime.
-fn standalone_daytime<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+fn standalone_daytime<'t, 's: 't, I>()
+-> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     choice((
-        keyword_ci("tonight").to(TimeExpression::DayTime(DayTime {
+        word_ci("tonight").to(TimeExpression::DayTime(DayTime {
             day: DayReference::Today,
             time: Time {
                 hour: 20,
@@ -380,9 +439,9 @@ fn standalone_daytime<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserEr
             },
         })),
         choice((
-            keyword_ci("eod"),
-            keyword_ci("end of day"),
-            keyword_ci("end of the day"),
+            word_ci("eod"),
+            phrase_ci("end of day"),
+            phrase_ci("end of the day"),
         ))
         .to(TimeExpression::DayTime(DayTime {
             day: DayReference::Today,
@@ -396,20 +455,28 @@ fn standalone_daytime<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserEr
     ))
 }
 
-/// "the day after tomorrow" — synonym with "the" prefix.
-fn the_day_after_tomorrow<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
-    keyword_ci("the day after tomorrow").to(DayReference::DayAfterTomorrow)
-}
-
-/// "the day before yesterday" — synonym with "the" prefix.
-fn the_day_before_yesterday<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone
+/// The `the`-prefixed synonyms: "the day after tomorrow", "the day before
+/// yesterday".
+///
+/// The shared `the` is factored out rather than repeated in two competing
+/// alternatives.
+fn the_day_reference<'t, 's: 't, I>()
+-> impl Parser<'t, I, DayReference, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
 {
-    keyword_ci("the day before yesterday").to(DayReference::DayBeforeYesterday)
+    word_ci("the").ignore_then(space()).ignore_then(phrases_ci([
+        ("day after tomorrow", DayReference::DayAfterTomorrow),
+        ("day before yesterday", DayReference::DayBeforeYesterday),
+    ]))
 }
 
 /// "fortnight" = 2 weeks (future direction assumed for scheduling).
-fn fortnight<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
-    keyword_ci("fortnight").to(TimeExpression::Relative(RelativeTime {
+fn fortnight<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    word_ci("fortnight").to(TimeExpression::Relative(RelativeTime {
         amount: 2,
         unit: TimeUnit::Week,
         direction: Direction::Future,
@@ -417,55 +484,81 @@ fn fortnight<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> 
 }
 
 /// "later" / "later today" — vague future (~2 hours).
-fn later_expr<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
-    choice((
-        keyword_ci("later today").to(TimeExpression::LaterToday),
-        keyword_ci("later").to(TimeExpression::Relative(RelativeTime {
-            amount: 2,
-            unit: TimeUnit::Hour,
-            direction: Direction::Future,
-        })),
-    ))
-}
-
-/// "a week from now" / "a week from today".
-fn week_from_now<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
-    choice((
-        keyword_ci("a week from today"),
-        keyword_ci("a week from now"),
-    ))
-    .to(TimeExpression::Relative(RelativeTime {
-        amount: 1,
-        unit: TimeUnit::Week,
-        direction: Direction::Future,
-    }))
-}
-
-fn day_at_time<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
-    day_reference()
-        .then_ignore(whitespace_required())
-        .then_ignore(keyword_ci("at"))
-        .then_ignore(whitespace_required())
-        .then(time_digits())
-        .map(|(day, (hour, minute, second, meridiem))| {
-            TimeExpression::DayTime(DayTime {
-                day,
-                time: Time {
-                    hour,
-                    minute,
-                    second,
-                    meridiem,
-                },
-            })
+fn later_expr<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    // Left-factored on the shared `later`, so the bare form can no longer
+    // shadow `later today` and the order of the two readings is irrelevant.
+    word_ci("later")
+        .ignore_then(space().ignore_then(word_ci("today")).or_not())
+        .map(|today| match today {
+            Some(()) => TimeExpression::LaterToday,
+            None => TimeExpression::Relative(RelativeTime {
+                amount: 2,
+                unit: TimeUnit::Hour,
+                direction: Direction::Future,
+            }),
         })
 }
 
-fn relative_past<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+/// "a week from now" / "a week from today".
+fn week_from_now<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    choice((phrase_ci("a week from today"), phrase_ci("a week from now"))).to(
+        TimeExpression::Relative(RelativeTime {
+            amount: 1,
+            unit: TimeUnit::Week,
+            direction: Direction::Future,
+        }),
+    )
+}
+
+/// A day reference, optionally qualified by a time of day.
+///
+/// This is the left-factored form of what used to be three competing top-level
+/// alternatives — `tomorrow at 3:30 pm`, `tomorrow morning` and a bare
+/// `tomorrow`. They all start with the same [`day_reference`], so under an
+/// ordered `choice` the bare form would commit on `tomorrow` and strand the
+/// rest of the input. Parsing the shared prefix once and treating the time as
+/// an optional tail removes the ambiguity instead of papering over it.
+fn day_expr<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    let at_time = word_ci("at")
+        .ignore_then(space())
+        .ignore_then(time_digits())
+        .map(|(hour, minute, second, meridiem)| Time {
+            hour,
+            minute,
+            second,
+            meridiem,
+        });
+
+    day_reference()
+        .then(
+            space()
+                .ignore_then(choice((at_time, part_of_day())))
+                .or_not(),
+        )
+        .map(|(day, time)| match time {
+            Some(time) => TimeExpression::DayTime(DayTime { day, time }),
+            None => TimeExpression::Day(day),
+        })
+}
+
+fn relative_past<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     number()
-        .then_ignore(whitespace_required())
+        .then_ignore(space())
         .then(time_unit())
-        .then_ignore(whitespace_required())
-        .then_ignore(keyword_ci("ago"))
+        .then_ignore(space())
+        .then_ignore(word_ci("ago"))
         .map(|(amount, unit)| {
             TimeExpression::Relative(RelativeTime {
                 amount,
@@ -475,11 +568,15 @@ fn relative_past<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'
         })
 }
 
-fn relative_future<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
-    keyword_ci("in")
-        .ignore_then(whitespace_required())
+fn relative_future<'t, 's: 't, I>()
+-> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    word_ci("in")
+        .ignore_then(space())
         .ignore_then(number())
-        .then_ignore(whitespace_required())
+        .then_ignore(space())
         .then(time_unit())
         .map(|(amount, unit)| {
             TimeExpression::Relative(RelativeTime {
@@ -490,17 +587,25 @@ fn relative_future<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError
         })
 }
 
-fn now_expr<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
-    keyword_ci("now").to(TimeExpression::Now)
+fn now_expr<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
+    word_ci("now").to(TimeExpression::Now)
 }
 
-fn date_format<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+fn date_format<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+{
     // Note: a `YYYY-MM-DD` alternative would be dead code here — `iso_datetime()`
     // is tried first at the top level and accepts exactly that shape.
+    let separator = choice((punct('/').to('/'), punct('-').to('-')));
+
     two_digit_number()
-        .then(one_of(['/', '-']))
+        .then(separator.clone())
         .then(two_digit_number())
-        .then(one_of(['/', '-']))
+        .then(separator)
         .then(four_digit_number())
         .try_map(|((((day, first), month), second), year), span| {
             if first == second && time_utils::is_valid_calendar_date(year, month, day) {
@@ -511,45 +616,43 @@ fn date_format<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>
         })
 }
 
-fn parser<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> {
-    // Longest-match: whichever alternative consumes the most wins, so no
-    // alternative can shadow a longer one by appearing earlier.
-    longest(vec![
-        iso_datetime().labelled("ISO 8601 datetime").boxed(),
-        date_format().labelled("calendar date").boxed(),
-        day_at_time().labelled("day with time").boxed(),
-        day_with_part_of_day()
-            .labelled("day with part of day")
-            .boxed(),
-        now_expr().labelled("`now`").boxed(),
-        standalone_daytime()
-            .labelled("standalone (tonight, EOD)")
-            .boxed(),
-        this_part_of_day()
-            .labelled("this morning/afternoon/evening")
-            .boxed(),
-        day_reference()
-            .map(TimeExpression::Day)
-            .labelled("day reference")
-            .boxed(),
-        named_time()
-            .labelled("named time (noon, midnight, teatime)")
-            .boxed(),
-        time_expr().labelled("time of day").boxed(),
-        relative_past().labelled("`<n> <unit> ago`").boxed(),
-        relative_future().labelled("`in <n> <unit>`").boxed(),
-        week_from_now().labelled("a week from now/today").boxed(),
-        fortnight().labelled("fortnight").boxed(),
-        later_expr().labelled("later/later today").boxed(),
-    ])
-    .padded()
+fn parser<'t, 's: 't, I>() -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>>
+where
+    I: TokenInput<'t, 's>,
+{
+    // An ordered `choice`, which is only safe because the grammar is
+    // left-factored: every family of expressions sharing a leading token is
+    // parsed by a single alternative that treats the rest as an optional tail
+    // (see [`day_expr`], [`later_expr`], [`iso_datetime`]). What remains are
+    // alternatives that either start on different tokens or fail without
+    // committing, so none can succeed on a proper prefix of another's match
+    // and strand the rest of the input against `end()`. The order below is
+    // therefore documentation, not semantics: reversing it parses every
+    // supported expression identically.
+    choice((
+        iso_datetime().labelled("ISO 8601 datetime"),
+        date_format().labelled("calendar date"),
+        day_expr().labelled("day, optionally with a time"),
+        now_expr().labelled("`now`"),
+        standalone_daytime().labelled("standalone (tonight, EOD)"),
+        this_part_of_day().labelled("this morning/afternoon/evening"),
+        named_time().labelled("named time (noon, midnight, teatime)"),
+        time_expr().labelled("time of day"),
+        relative_past().labelled("`<n> <unit> ago`"),
+        relative_future().labelled("`in <n> <unit>`"),
+        week_from_now().labelled("a week from now/today"),
+        fortnight().labelled("fortnight"),
+        later_expr().labelled("later/later today"),
+    ))
+    .padded_by(opt_space())
     .then_ignore(end())
 }
 
 impl LanguageParser for EnglishParser {
     fn parse(&self, input: &str) -> Result<TimeExpression> {
+        let tokens = lex(input);
         parser()
-            .parse(input)
+            .parse(token_stream(input, &tokens))
             .into_result()
             .map_err(|errs| rich_errors_to_temps_error(input, errs))
     }

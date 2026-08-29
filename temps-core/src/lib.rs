@@ -47,6 +47,7 @@
 
 // ===== Error Module =====
 pub mod error;
+pub mod lexer;
 pub use error::{Result, TempsError};
 
 // ===== Core Types =====
@@ -749,242 +750,369 @@ pub mod time_utils {
 
 /// Common parsing utilities shared across language implementations.
 ///
-/// This module contains parser building blocks that are shared between
-/// different language implementations, such as ISO datetime parsing,
-/// number parsing, and the case-insensitive keyword helper.
+/// Every parser here consumes [`Token`](crate::lexer::Token)s produced by
+/// [`lex`](crate::lexer::lex) rather than characters. Lexing first is what
+/// makes keyword matching *whole-word* matching: `word_ci("day")` compares the
+/// entire `Word("days")` slice and fails, where the old character-level
+/// `keyword_ci("day")` matched the prefix and needed a hand-rolled word-boundary
+/// assertion plus longest-first ordering to stay correct.
+///
+/// # Writing a parser against this module
+///
+/// Parsers are generic over the input so they compose with whatever concrete
+/// token stream the caller builds:
+///
+/// ```
+/// use chumsky::prelude::*;
+/// use temps_core::common::{ParserError, TokenInput, word_ci};
+///
+/// fn now_expr<'t, 's: 't, I>() -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
+/// where
+///     I: TokenInput<'t, 's>,
+/// {
+///     word_ci("now")
+/// }
+/// ```
+///
+/// and are driven by lexing the source and mapping the token slice into an
+/// input:
+///
+/// ```
+/// use chumsky::prelude::*;
+/// use temps_core::{common::{token_stream, word_ci}, lexer::lex};
+///
+/// let input = "now";
+/// let tokens = lex(input);
+/// let result = word_ci("now")
+///     .then_ignore(end())
+///     .parse(token_stream(input, &tokens))
+///     .into_result();
+/// assert!(result.is_ok());
+/// ```
 pub mod common {
     use super::{AbsoluteTime, TimeExpression, Timezone, time_utils};
-    use chumsky::{error::Rich, extra, prelude::*, text};
+    use crate::lexer::{Token, lex};
+    use chumsky::{input::ValueInput, prelude::*};
 
     /// The error type used throughout the parsers.
-    pub type ParserError<'a> = extra::Err<Rich<'a, char>>;
-
-    /// Match an ASCII keyword case-insensitively.
     ///
-    /// Used for English keywords ("now", "ago", "in") and German
-    /// abbreviations ("sek", "min", "uhr"). Non-ASCII characters in
-    /// `target` are compared exactly. The parser is internally a chain
-    /// of single-character matchers so error messages mention the
-    /// keyword's first expected character; the whole branch is then
-    /// labelled with `target` so callers see "expected `now`" etc.
-    pub fn keyword_ci<'a>(
+    /// `'t` is the lifetime of the token slice being parsed; `'s` is the
+    /// lifetime of the source string those tokens borrow their slices from.
+    /// `'s` always outlives `'t`.
+    pub type ParserError<'t, 's> = extra::Err<Rich<'t, Token<'s>>>;
+
+    /// The input bound every parser in this module is generic over.
+    ///
+    /// This is a blanket-implemented convenience for
+    /// `ValueInput<'t, Token = Token<'s>, Span = SimpleSpan>`, which is what
+    /// [`token_stream`] produces. Written out in a `where` clause on every
+    /// parser function that bound is most of the signature; naming it keeps the
+    /// grammar readable.
+    pub trait TokenInput<'t, 's>: ValueInput<'t, Token = Token<'s>, Span = SimpleSpan> {}
+
+    impl<'t, 's, I> TokenInput<'t, 's> for I where
+        I: ValueInput<'t, Token = Token<'s>, Span = SimpleSpan>
+    {
+    }
+
+    /// A boxed token parser.
+    ///
+    /// Needed wherever a homogeneous collection of parsers is required — most
+    /// notably when [`phrase`] folds a phrase's tokens into a single parser.
+    pub type BoxedParser<'t, 's, I, O> = chumsky::Boxed<'t, 't, I, O, ParserError<'t, 's>>;
+
+    /// Turn a source string and its lexed tokens into a parser input.
+    ///
+    /// The end-of-input span is `source.len()..source.len()` so that an error
+    /// at the end of the input still carries a byte offset the diagnostics
+    /// layer can translate.
+    ///
+    /// ```
+    /// use temps_core::{common::token_stream, lexer::lex};
+    ///
+    /// let input = "in 5 minutes";
+    /// let tokens = lex(input);
+    /// let stream = token_stream(input, &tokens);
+    /// ```
+    pub fn token_stream<'t, 's: 't>(
+        source: &'s str,
+        tokens: &'t [(Token<'s>, SimpleSpan)],
+    ) -> impl TokenInput<'t, 's> {
+        let eoi = SimpleSpan::from(source.len()..source.len());
+        tokens.map(eoi, |(token, span)| (token, span))
+    }
+
+    // ----- Whitespace and punctuation -----
+
+    /// Match exactly one [`Token::Space`].
+    ///
+    /// Whitespace is a token rather than something skipped implicitly because
+    /// `5 minutes` is a time expression and `5minutes` is not. A `Space` token
+    /// stands for a whole run of whitespace, so this also covers the repeated
+    /// `one_of(" \t\n\r").at_least(1)` the character-level grammar used.
+    pub fn space<'t, 's: 't, I>() -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        just(Token::Space).ignored().labelled("whitespace")
+    }
+
+    /// Match an optional [`Token::Space`].
+    ///
+    /// The token-level replacement for `text::whitespace()`. Combine it with
+    /// [`Parser::padded_by`] to replace a top-level `.padded()`.
+    pub fn opt_space<'t, 's: 't, I>() -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        just(Token::Space).or_not().ignored()
+    }
+
+    /// Match a single punctuation character, e.g. `punct(':')`.
+    ///
+    /// The lexer emits every non-alphanumeric, non-whitespace character as its
+    /// own [`Token::Punct`], so this is the token-level `just(':')`.
+    pub fn punct<'t, 's: 't, I>(c: char) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        just(Token::Punct(c)).ignored()
+    }
+
+    // ----- Words -----
+
+    /// Match a whole [`Token::Word`] against `target`, case-insensitively.
+    ///
+    /// The comparison is Unicode-aware (`char::to_lowercase`), not
+    /// `eq_ignore_ascii_case`, because German keywords contain umlauts:
+    /// `word_ci("nächsten")` must accept `Nächsten`.
+    ///
+    /// Matching is whole-slice: `word_ci("day")` never matches `days`, and
+    /// `word_ci("m")` never matches `min`, whatever order alternatives appear
+    /// in. Use [`phrase_ci`] for anything containing a space or punctuation.
+    pub fn word_ci<'t, 's: 't, I>(
         target: &'static str,
-    ) -> impl Parser<'a, &'a str, (), ParserError<'a>> + Clone {
-        let mut chars = target.chars();
-        let first = chars.next().expect("keyword must be non-empty");
-        let mut parser: chumsky::Boxed<'a, 'a, &'a str, (), ParserError<'a>> =
-            char_ci(first).ignored().boxed();
-        for c in chars {
-            parser = parser.then_ignore(char_ci(c)).boxed();
-        }
-
-        // Require a word boundary after keywords that end in a word character,
-        // so `keyword_ci("day")` cannot match inside "days" and `keyword_ci("m")`
-        // cannot match inside "min". Without this, matching is pure prefix
-        // matching and every `choice` has to be hand-ordered longest-first --
-        // a convention that fails silently when it is broken.
-        //
-        // Keywords ending in punctuation (`a.m.`) need no such check.
-        if target.chars().last().is_some_and(is_word_char) {
-            parser = parser.then_ignore(word_boundary()).boxed();
-        }
-
-        parser.labelled(target)
+    ) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        select! { Token::Word(word) if eq_ignore_case(word, target) => () }.labelled(target)
     }
 
-    /// Characters that may not directly follow a word-like keyword.
-    fn is_word_char(c: char) -> bool {
-        c.is_alphanumeric() || c == '_'
-    }
-
-    /// Succeeds without consuming input when the next character cannot continue
-    /// a word, or at end of input.
-    fn word_boundary<'a>() -> impl Parser<'a, &'a str, (), ParserError<'a>> + Clone {
-        any()
-            .filter(|c: &char| !is_word_char(*c))
-            .ignored()
-            .rewind()
-            .or(end())
-    }
-
-    /// Try every alternative from the same input position and keep whichever
-    /// consumed the most.
+    /// Match a whole [`Token::Word`] against `target`, case-**sensitively**.
     ///
-    /// `choice` commits to the first alternative that succeeds and never
-    /// re-enters it, so a shorter match shadows a longer one and a later
-    /// failure cannot recover. Longest-match makes source order irrelevant, and
-    /// unlike sorting a keyword list it works between alternatives of any
-    /// shape, not just plain keywords.
+    /// For languages where capitalisation carries meaning — German nouns
+    /// (`Tagen`, `Montag`) and the ISO 8601 `T` and `Z` designators.
+    pub fn word_cs<'t, 's: 't, I>(
+        target: &'static str,
+    ) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        select! { Token::Word(word) if word == target => () }.labelled(target)
+    }
+
+    /// Compare two strings for equality under Unicode simple lowercase folding.
+    fn eq_ignore_case(a: &str, b: &str) -> bool {
+        let mut a = a.chars().flat_map(char::to_lowercase);
+        let mut b = b.chars().flat_map(char::to_lowercase);
+        loop {
+            match (a.next(), b.next()) {
+                (None, None) => return true,
+                (x, y) if x == y => (),
+                _ => return false,
+            }
+        }
+    }
+
+    // ----- Phrases -----
+
+    /// Match a multi-token phrase case-insensitively, e.g.
+    /// `phrase_ci("day after tomorrow")` or `phrase_ci("a.m.")`.
     ///
-    /// Every alternative is run, so reserve this for alternations where the
-    /// shadowing risk is real rather than using it as a blanket `choice`.
+    /// `target` is lexed with the very same [`lex`] the input goes through, and
+    /// the resulting tokens are matched in sequence. A space in `target`
+    /// therefore requires a [`Token::Space`] in the input (one whitespace run,
+    /// of any width), and punctuation matches punctuation.
+    ///
+    /// A single-word `target` is simply [`word_ci`], so this is always the safe
+    /// choice when the phrase is built from a table of keywords.
+    pub fn phrase_ci<'t, 's: 't, I>(
+        target: &'static str,
+    ) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        phrase(target, Case::Insensitive)
+    }
+
+    /// Case-sensitive counterpart of [`phrase_ci`].
+    pub fn phrase_cs<'t, 's: 't, I>(
+        target: &'static str,
+    ) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        phrase(target, Case::Sensitive)
+    }
+
+    /// Build a case-insensitive alternation over `(phrase, value)` pairs,
+    /// trying the phrase with the most tokens first.
+    ///
+    /// Tokenising removes *sub-word* shadowing but not *phrase-prefix*
+    /// shadowing: `choice` still commits to the first alternative that
+    /// succeeds, so `"a"` listed before `"a couple of"` would consume the `a`
+    /// of `a couple of days ago`, leave `couple` behind, and doom the enclosing
+    /// rule. Sorting here makes the source order of the table irrelevant
+    /// instead of load-bearing.
     ///
     /// # Panics
     ///
-    /// Panics if `parsers` is empty.
-    pub fn longest<'a, T>(
-        parsers: Vec<chumsky::Boxed<'a, 'a, &'a str, T, ParserError<'a>>>,
-    ) -> impl Parser<'a, &'a str, T, ParserError<'a>> + Clone
-    where
-        T: 'a,
-    {
-        assert!(
-            !parsers.is_empty(),
-            "longest() needs at least one alternative"
-        );
-        let parsers = std::rc::Rc::new(parsers);
-
-        custom(move |inp| {
-            let start = inp.cursor();
-            let mut best: Option<(usize, usize)> = None;
-            let mut first_err: Option<Rich<'a, char>> = None;
-
-            for (index, parser) in parsers.iter().enumerate() {
-                let checkpoint = inp.save();
-                match inp.parse(parser.clone()) {
-                    Ok(_) => {
-                        let consumed = inp.slice_since(&start..).len();
-                        if best.is_none_or(|(best_len, _)| consumed > best_len) {
-                            best = Some((consumed, index));
-                        }
-                    }
-                    Err(err) => {
-                        if first_err.is_none() {
-                            first_err = Some(err);
-                        }
-                    }
-                }
-                // Always return to the start so the next alternative sees the
-                // same input.
-                inp.rewind(checkpoint);
-            }
-
-            match best {
-                // Re-run the winner to actually consume its input. Parsers are
-                // pure, so this yields the same value.
-                Some((_, index)) => inp.parse(parsers[index].clone()),
-                None => Err(first_err.expect("a non-empty alternation always produces an error")),
-            }
-        })
-    }
-
-    /// Case-**sensitive** keyword with the same word-boundary rule as
-    /// [`keyword_ci`], for languages where capitalisation is meaningful.
-    pub fn keyword_cs<'a>(
-        target: &'static str,
-    ) -> impl Parser<'a, &'a str, (), ParserError<'a>> + Clone {
-        let mut parser: chumsky::Boxed<'a, 'a, &'a str, (), ParserError<'a>> =
-            just(target).ignored().boxed();
-        if target.chars().last().is_some_and(is_word_char) {
-            parser = parser.then_ignore(word_boundary()).boxed();
-        }
-        parser.labelled(target)
-    }
-
-    /// Case-sensitive counterpart of [`keywords_ci`], longest keyword first.
-    pub fn keywords<'a, T>(
+    /// Panics if `pairs` is empty.
+    pub fn phrases_ci<'t, 's: 't, I, T>(
         pairs: impl IntoIterator<Item = (&'static str, T)>,
-    ) -> impl Parser<'a, &'a str, T, ParserError<'a>> + Clone
+    ) -> impl Parser<'t, I, T, ParserError<'t, 's>> + Clone
     where
-        T: Clone + 'a,
+        I: TokenInput<'t, 's>,
+        T: Clone + 't,
     {
-        let mut pairs: Vec<(&'static str, T)> = pairs.into_iter().collect();
-        pairs.sort_by_key(|(kw, _)| std::cmp::Reverse(kw.chars().count()));
-
-        let mut iter = pairs.into_iter();
-        let (first_kw, first_val) = iter.next().expect("keyword set must be non-empty");
-        let mut parser: chumsky::Boxed<'a, 'a, &'a str, T, ParserError<'a>> =
-            keyword_cs(first_kw).to(first_val).boxed();
-        for (kw, val) in iter {
-            parser = parser.or(keyword_cs(kw).to(val)).boxed();
-        }
-        parser
+        phrase_alternation(pairs, Case::Insensitive)
     }
 
-    /// Build a case-insensitive alternation over `(keyword, value)` pairs,
-    /// trying the longest keyword first.
+    /// Case-sensitive counterpart of [`phrases_ci`].
     ///
-    /// `choice` commits to the first alternative that succeeds and never
-    /// re-enters it, so a shorter keyword listed before a longer one that
-    /// shares its prefix silently shadows it — `"a couple"` swallowing the
-    /// start of `"a couple of"` leaves a remainder nothing can parse. Sorting
-    /// here makes the source order irrelevant instead of load-bearing.
-    pub fn keywords_ci<'a, T>(
+    /// # Panics
+    ///
+    /// Panics if `pairs` is empty.
+    pub fn phrases_cs<'t, 's: 't, I, T>(
         pairs: impl IntoIterator<Item = (&'static str, T)>,
-    ) -> impl Parser<'a, &'a str, T, ParserError<'a>> + Clone
+    ) -> impl Parser<'t, I, T, ParserError<'t, 's>> + Clone
     where
-        T: Clone + 'a,
+        I: TokenInput<'t, 's>,
+        T: Clone + 't,
+    {
+        phrase_alternation(pairs, Case::Sensitive)
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Case {
+        Sensitive,
+        Insensitive,
+    }
+
+    /// Match one token of a lexed phrase pattern.
+    fn pattern_token<'t, 's: 't, I>(token: Token<'static>, case: Case) -> BoxedParser<'t, 's, I, ()>
+    where
+        I: TokenInput<'t, 's>,
+    {
+        match token {
+            Token::Word(word) => match case {
+                Case::Sensitive => word_cs(word).boxed(),
+                Case::Insensitive => word_ci(word).boxed(),
+            },
+            Token::Number(digits) => {
+                select! { Token::Number(found) if found == digits => () }.boxed()
+            }
+            Token::Punct(c) => punct(c).boxed(),
+            Token::Space => space().boxed(),
+        }
+    }
+
+    /// Lex `target` and match its tokens in sequence.
+    fn phrase<'t, 's: 't, I>(target: &'static str, case: Case) -> BoxedParser<'t, 's, I, ()>
+    where
+        I: TokenInput<'t, 's>,
+    {
+        let mut tokens = lex(target).into_iter().map(|(token, _)| token);
+        let first = tokens.next().expect("phrase must be non-empty");
+        let mut parser = pattern_token(first, case);
+        for token in tokens {
+            parser = parser.then_ignore(pattern_token(token, case)).boxed();
+        }
+        parser.labelled(target).boxed()
+    }
+
+    fn phrase_alternation<'t, 's: 't, I, T>(
+        pairs: impl IntoIterator<Item = (&'static str, T)>,
+        case: Case,
+    ) -> BoxedParser<'t, 's, I, T>
+    where
+        I: TokenInput<'t, 's>,
+        T: Clone + 't,
     {
         let mut pairs: Vec<(&'static str, T)> = pairs.into_iter().collect();
-        pairs.sort_by_key(|(kw, _)| std::cmp::Reverse(kw.chars().count()));
+        // Most tokens first; character count breaks ties so the ordering is
+        // total and deterministic.
+        pairs.sort_by_key(|(phrase, _)| {
+            std::cmp::Reverse((lex(phrase).len(), phrase.chars().count()))
+        });
 
-        let mut iter = pairs.into_iter();
-        let (first_kw, first_val) = iter.next().expect("keyword set must be non-empty");
-        let mut parser: chumsky::Boxed<'a, 'a, &'a str, T, ParserError<'a>> =
-            keyword_ci(first_kw).to(first_val).boxed();
-        for (kw, val) in iter {
-            parser = parser.or(keyword_ci(kw).to(val)).boxed();
+        let mut pairs = pairs.into_iter();
+        let (first_phrase, first_value) = pairs.next().expect("phrase set must be non-empty");
+        let mut parser = phrase(first_phrase, case).to(first_value).boxed();
+        for (pattern, value) in pairs {
+            parser = parser.or(phrase(pattern, case).to(value)).boxed();
         }
         parser
     }
 
-    fn char_ci<'a>(target: char) -> chumsky::Boxed<'a, 'a, &'a str, char, ParserError<'a>> {
-        let lower = target.to_lowercase().next().unwrap_or(target);
-        let upper = target.to_uppercase().next().unwrap_or(target);
-        if lower == upper {
-            just(target).boxed()
-        } else {
-            one_of([lower, upper]).boxed()
-        }
-    }
+    // ----- Numbers -----
 
-    fn ascii_digit<'a>() -> impl Parser<'a, &'a str, char, ParserError<'a>> + Clone {
-        one_of('0'..='9').labelled("digit")
-    }
-
-    /// Parse a sequence of digits as an `i64`.
-    pub fn digit_number<'a>() -> impl Parser<'a, &'a str, i64, ParserError<'a>> + Clone {
-        ascii_digit()
-            .repeated()
-            .at_least(1)
-            .to_slice()
-            .try_map(|s: &str, span| {
-                s.parse::<i64>()
+    /// Parse a [`Token::Number`] of any width as an `i64`.
+    pub fn digit_number<'t, 's: 't, I>() -> impl Parser<'t, I, i64, ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        select! { Token::Number(digits) => digits }
+            .try_map(|digits: &str, span| {
+                digits
+                    .parse::<i64>()
                     .map_err(|e| Rich::custom(span, e.to_string()))
             })
             .labelled("number")
     }
 
-    /// Parse a 1 or 2 digit number as `u8`.
-    pub fn two_digit_number<'a>() -> impl Parser<'a, &'a str, u8, ParserError<'a>> + Clone {
-        ascii_digit()
-            .repeated()
-            .at_least(1)
-            .at_most(2)
-            .to_slice()
-            .try_map(|s: &str, span| {
-                s.parse::<u8>()
+    /// Parse a 1 or 2 digit [`Token::Number`] as a `u8`.
+    ///
+    /// The width check is what makes `123:45` fail: the lexer produces a single
+    /// `Number("123")` token, which cannot be split into `12` plus a leftover
+    /// `3`, so no alternative can quietly consume part of it.
+    pub fn two_digit_number<'t, 's: 't, I>() -> impl Parser<'t, I, u8, ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        select! { Token::Number(digits) if matches!(digits.len(), 1 | 2) => digits }.try_map(
+            |digits: &str, span| {
+                digits
+                    .parse::<u8>()
                     .map_err(|e| Rich::custom(span, e.to_string()))
-            })
+            },
+        )
     }
 
-    /// Parse a 4-digit number as `u16`.
-    pub fn four_digit_number<'a>() -> impl Parser<'a, &'a str, u16, ParserError<'a>> + Clone {
-        ascii_digit()
-            .repeated()
-            .exactly(4)
-            .to_slice()
-            .try_map(|s: &str, span| {
-                s.parse::<u16>()
+    /// Parse an exactly-4-digit [`Token::Number`] as a `u16`.
+    pub fn four_digit_number<'t, 's: 't, I>() -> impl Parser<'t, I, u16, ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        select! { Token::Number(digits) if digits.len() == 4 => digits }
+            .try_map(|digits: &str, span| {
+                digits
+                    .parse::<u16>()
                     .map_err(|e| Rich::custom(span, e.to_string()))
             })
             .labelled("4-digit year")
     }
 
-    fn offset_timezone<'a>() -> impl Parser<'a, &'a str, Timezone, ParserError<'a>> + Clone {
-        one_of(['+', '-'])
+    // ----- ISO 8601 -----
+
+    fn offset_timezone<'t, 's: 't, I>() -> impl Parser<'t, I, Timezone, ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        select! { Token::Punct(sign) if sign == '+' || sign == '-' => sign }
             .then(two_digit_number())
-            .then(just(':').ignore_then(two_digit_number()).or_not())
+            .then(punct(':').ignore_then(two_digit_number()).or_not())
             .try_map(|((sign, hours), minutes), span| {
                 let minutes = minutes.unwrap_or(0);
                 if minutes > 59 {
@@ -1005,12 +1133,19 @@ pub mod common {
             })
     }
 
-    fn timezone<'a>() -> impl Parser<'a, &'a str, Timezone, ParserError<'a>> + Clone {
-        choice((just('Z').to(Timezone::Utc), offset_timezone()))
+    fn timezone<'t, 's: 't, I>() -> impl Parser<'t, I, Timezone, ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        // `Z` is a designator, not a word to be case-folded: `z` is not UTC.
+        choice((word_cs("Z").to(Timezone::Utc), offset_timezone()))
     }
 
-    fn fractional_seconds<'a>() -> impl Parser<'a, &'a str, u32, ParserError<'a>> + Clone {
-        text::digits(10).to_slice().try_map(|s: &str, span| {
+    fn fractional_seconds<'t, 's: 't, I>() -> impl Parser<'t, I, u32, ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        select! { Token::Number(digits) => digits }.try_map(|s: &str, span| {
             let fraction = if s.len() > 9 { &s[..9] } else { s };
             let parsed: u32 = fraction
                 .parse()
@@ -1029,11 +1164,15 @@ pub mod common {
     /// - With timezone: `2024-01-15T14:30:00Z`
     /// - With offset: `2024-01-15T14:30:00+02:00`
     /// - With fractional seconds: `2024-01-15T14:30:00.123Z`
-    pub fn iso_datetime<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+    pub fn iso_datetime<'t, 's: 't, I>()
+    -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
         let date = four_digit_number()
-            .then_ignore(just('-'))
+            .then_ignore(punct('-'))
             .then(two_digit_number())
-            .then_ignore(just('-'))
+            .then_ignore(punct('-'))
             .then(two_digit_number())
             .try_map(|((year, month), day), span| {
                 if time_utils::is_valid_calendar_date(year, month, day) {
@@ -1043,14 +1182,18 @@ pub mod common {
                 }
             });
 
-        let time = one_of(['T', ' '])
+        // The date/time separator is either the ISO `T` designator — lexed as a
+        // one-letter word between two numbers — or a space.
+        let separator = choice((word_cs("T"), space()));
+
+        let time = separator
             .ignore_then(two_digit_number())
-            .then_ignore(just(':'))
+            .then_ignore(punct(':'))
             .then(two_digit_number())
             .then(
-                just(':')
+                punct(':')
                     .ignore_then(two_digit_number())
-                    .then(just('.').ignore_then(fractional_seconds()).or_not())
+                    .then(punct('.').ignore_then(fractional_seconds()).or_not())
                     .or_not(),
             )
             .then(timezone().or_not())
@@ -1092,6 +1235,132 @@ pub mod common {
                     timezone: None,
                 }),
             })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// Lex `$input`, run `$parser` over the whole of it, and yield
+        /// `Option<Output>`.
+        ///
+        /// A macro rather than a function because the input type
+        /// [`token_stream`] returns is opaque, so a caller cannot name it in a
+        /// `where` clause.
+        macro_rules! run {
+            ($input:expr, $parser:expr) => {{
+                let input: &str = $input;
+                let tokens = lex(input);
+                $parser
+                    .then_ignore(end())
+                    .parse(token_stream(input, &tokens))
+                    .into_result()
+                    .ok()
+            }};
+        }
+
+        #[test]
+        fn word_ci_matches_whole_words_only() {
+            assert!(run!("day", word_ci("day")).is_some());
+            assert!(run!("DAY", word_ci("day")).is_some());
+            // The bug the lexer exists to prevent: `day` inside `days`.
+            assert!(run!("days", word_ci("day")).is_none());
+            assert!(run!("min", word_ci("m")).is_none());
+        }
+
+        #[test]
+        fn word_ci_folds_umlauts() {
+            assert!(run!("nächsten", word_ci("nächsten")).is_some());
+            assert!(run!("Nächsten", word_ci("nächsten")).is_some());
+            assert!(run!("NÄCHSTEN", word_ci("nächsten")).is_some());
+        }
+
+        #[test]
+        fn word_cs_respects_case() {
+            assert!(run!("Montag", word_cs("Montag")).is_some());
+            assert!(run!("montag", word_cs("Montag")).is_none());
+        }
+
+        #[test]
+        fn phrases_span_spaces_and_punctuation() {
+            assert!(run!("day after tomorrow", phrase_ci("day after tomorrow")).is_some());
+            assert!(run!("A.M.", phrase_ci("a.m.")).is_some());
+            assert!(run!("day after", phrase_ci("day after tomorrow")).is_none());
+            // No implicit whitespace: the phrase's space is a real token.
+            assert!(run!("halfpast", phrase_ci("half past")).is_none());
+        }
+
+        #[test]
+        fn phrase_alternation_prefers_the_longer_phrase() {
+            let pairs = || [("a", 1i64), ("a couple of", 2), ("a few", 3)];
+            assert_eq!(run!("a couple of", phrases_ci(pairs())), Some(2));
+            assert_eq!(run!("a few", phrases_ci(pairs())), Some(3));
+            assert_eq!(run!("a", phrases_ci(pairs())), Some(1));
+        }
+
+        #[test]
+        fn number_widths_are_enforced() {
+            assert_eq!(run!("7", two_digit_number()), Some(7));
+            assert_eq!(run!("07", two_digit_number()), Some(7));
+            // A 3-digit number is one token and cannot be truncated to two.
+            assert_eq!(run!("123", two_digit_number()), None);
+            assert_eq!(run!("2024", four_digit_number()), Some(2024));
+            assert_eq!(run!("204", four_digit_number()), None);
+            assert_eq!(run!("12345", digit_number()), Some(12345));
+        }
+
+        #[test]
+        fn iso_datetime_round_trips() {
+            let expected = TimeExpression::Absolute(AbsoluteTime {
+                year: 2024,
+                month: 1,
+                day: 15,
+                hour: Some(14),
+                minute: Some(30),
+                second: Some(0),
+                nanosecond: None,
+                timezone: Some(Timezone::Utc),
+            });
+            assert_eq!(run!("2024-01-15T14:30:00Z", iso_datetime()), Some(expected));
+
+            assert_eq!(
+                run!("2024-01-15T14:30:00-00:30", iso_datetime()),
+                Some(TimeExpression::Absolute(AbsoluteTime {
+                    year: 2024,
+                    month: 1,
+                    day: 15,
+                    hour: Some(14),
+                    minute: Some(30),
+                    second: Some(0),
+                    nanosecond: None,
+                    timezone: Some(Timezone::Offset { total_minutes: -30 }),
+                }))
+            );
+
+            // Invalid calendar date and invalid clock time are both rejected.
+            assert!(run!("2024-02-30", iso_datetime()).is_none());
+            assert!(run!("2024-01-15T25:00", iso_datetime()).is_none());
+        }
+
+        /// The shadowing hazard the grammar is left-factored to avoid: a bare
+        /// `tomorrow` listed first under `choice` commits, strands `morning`,
+        /// and the enclosing `end()` then fails. Factoring the shared prefix
+        /// and making the tail optional is what removes it.
+        fn day_then_optional_part<'t, 's: 't, I>()
+        -> impl Parser<'t, I, i64, ParserError<'t, 's>> + Clone
+        where
+            I: TokenInput<'t, 's>,
+        {
+            word_ci("tomorrow")
+                .ignore_then(space().ignore_then(word_ci("morning")).or_not())
+                .map(|morning| if morning.is_some() { 2 } else { 1 })
+        }
+
+        #[test]
+        fn left_factoring_removes_the_shadowing() {
+            assert_eq!(run!("tomorrow morning", day_then_optional_part()), Some(2));
+            assert_eq!(run!("tomorrow", day_then_optional_part()), Some(1));
+        }
     }
 }
 

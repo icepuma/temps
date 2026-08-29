@@ -327,17 +327,21 @@ pub type Result<T> = std::result::Result<T, TempsError>;
 /// rendered report (with source context) is folded into the error's
 /// message so callers that simply display the error still get a useful,
 /// human-readable diagnostic.
+/// The parsers run over tokens, so their spans are the lexer's BYTE offsets
+/// into the original source — see [`crate::lexer::lex`]. That is exactly what
+/// the byte-to-character translation below needs, and it is why umlaut input
+/// still gets a caret in the right place.
 #[must_use]
 pub fn rich_errors_to_temps_error(
     input: &str,
-    errors: Vec<chumsky::error::Rich<'_, char>>,
+    errors: Vec<chumsky::error::Rich<'_, crate::lexer::Token<'_>>>,
 ) -> TempsError {
     use ariadne::{Color, Config, Label, Report, ReportKind, Source};
 
-    // chumsky spans over `&str` are BYTE offsets, but ariadne's `Source`
-    // indexes by CHARACTER. Feeding one to the other mislocates the caret on
-    // any non-ASCII input and silently drops the label once the byte offset
-    // runs past the character count. Translate up front.
+    // Token spans are BYTE offsets, but ariadne's `Source` indexes by
+    // CHARACTER. Feeding one to the other mislocates the caret on any
+    // non-ASCII input and silently drops the label once the byte offset runs
+    // past the character count. Translate up front.
     let byte_to_char = |byte: usize| -> usize {
         input
             .char_indices()
@@ -400,14 +404,18 @@ pub fn rich_errors_to_temps_error(
 
 /// Render a chumsky [`Rich`](chumsky::error::Rich) error as a `(headline, detail)`
 /// pair suitable for an ariadne report.
-fn format_rich(err: &chumsky::error::Rich<'_, char>) -> (String, String) {
+fn format_rich(err: &chumsky::error::Rich<'_, crate::lexer::Token<'_>>) -> (String, String) {
+    use crate::lexer::Token;
     use chumsky::error::RichReason;
 
     match err.reason() {
         RichReason::Custom(msg) => ("invalid time expression".to_string(), msg.clone()),
         _ => {
+            // `Token`'s `Display` already spells `Space` out as "whitespace",
+            // which reads badly inside backticks.
             let found = match err.found() {
-                Some(c) => format!("`{}`", c.escape_default()),
+                Some(Token::Space) => "whitespace".to_string(),
+                Some(token) => format!("`{token}`"),
                 None => "end of input".to_string(),
             };
 
@@ -481,6 +489,60 @@ mod tests {
                 assert_eq!(backend, "chrono");
             }
             _ => panic!("Wrong error type"),
+        }
+    }
+
+    /// The lexer's spans are byte offsets, ariadne indexes characters. An
+    /// umlaut before the error site is what tells the two apart.
+    #[test]
+    fn parse_error_position_is_a_character_offset() {
+        use crate::common::{ParserError, TokenInput, space, token_stream, word_ci};
+        use crate::lexer::lex;
+        use chumsky::prelude::*;
+
+        fn expects_zwei<'t, 's: 't, I>() -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
+        where
+            I: TokenInput<'t, 's>,
+        {
+            word_ci("in")
+                .then_ignore(space())
+                .then_ignore(word_ci("zwei"))
+                .ignored()
+        }
+
+        let input = "in fünf";
+        let tokens = lex(input);
+        let errors = expects_zwei()
+            .then_ignore(end())
+            .parse(token_stream(input, &tokens))
+            .into_result()
+            .expect_err("`fünf` is not `zwei`");
+
+        match rich_errors_to_temps_error(input, errors) {
+            TempsError::ParseError {
+                message, position, ..
+            } => {
+                // Byte offset 3, and character offset 3 too — but the label
+                // ariadne draws spans `fünf`, which is 5 bytes and 4 chars.
+                assert_eq!(position, Some(3));
+                assert!(message.contains("fünf"), "{message}");
+                assert!(message.contains("zwei"), "{message}");
+            }
+            other => panic!("expected a parse error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_input_gets_a_dedicated_message() {
+        let err = rich_errors_to_temps_error("", Vec::new());
+        match err {
+            TempsError::ParseError {
+                message, position, ..
+            } => {
+                assert_eq!(position, Some(0));
+                assert!(message.contains("input is empty"), "{message}");
+            }
+            other => panic!("expected a parse error, got {other:?}"),
         }
     }
 }
