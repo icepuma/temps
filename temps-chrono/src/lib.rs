@@ -252,6 +252,17 @@ impl TimeParser for ChronoProvider {
                             .single()
                             .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
+                    DayReference::DayAfterTomorrow => {
+                        let day_after = now + Duration::days(2);
+                        let midnight = day_after
+                            .date_naive()
+                            .and_hms_opt(0, 0, 0)
+                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
+                        midnight
+                            .and_local_timezone(Local)
+                            .single()
+                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
+                    }
                     DayReference::Weekday { day, modifier } => {
                         let target_weekday = match day {
                             Weekday::Monday => chrono::Weekday::Mon,

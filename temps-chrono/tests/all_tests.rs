@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Local, TimeZone, Timelike};
+use chrono::{DateTime, Datelike, Duration, Local, TimeZone, Timelike};
 use mockall::*;
 use temps_chrono::*;
 use temps_core::*;
@@ -702,6 +702,38 @@ fn test_day_at_time_with_chrono() {
     assert!(result.is_ok());
     let datetime = result.unwrap();
     assert_eq!(datetime.hour(), 9);
+    assert_eq!(datetime.minute(), 0);
+}
+
+#[test]
+fn test_day_after_tomorrow_with_chrono() {
+    let result = parse_to_datetime("day after tomorrow", Language::English);
+    assert!(result.is_ok());
+    let datetime = result.unwrap();
+    let expected = Local::now() + Duration::days(2);
+    assert_eq!(datetime.date_naive(), expected.date_naive());
+
+    let result = parse_to_datetime("day after tomorrow at 5:00 pm", Language::English);
+    assert!(result.is_ok());
+    let datetime = result.unwrap();
+    assert_eq!(datetime.hour(), 17);
+    assert_eq!(datetime.minute(), 0);
+    let expected_date = (Local::now() + Duration::days(2)).date_naive();
+    assert_eq!(datetime.date_naive(), expected_date);
+}
+
+#[test]
+fn test_named_times_with_chrono() {
+    let result = parse_to_datetime("noon", Language::English);
+    assert!(result.is_ok());
+    let datetime = result.unwrap();
+    assert_eq!(datetime.hour(), 12);
+    assert_eq!(datetime.minute(), 0);
+
+    let result = parse_to_datetime("midnight", Language::English);
+    assert!(result.is_ok());
+    let datetime = result.unwrap();
+    assert_eq!(datetime.hour(), 0);
     assert_eq!(datetime.minute(), 0);
 }
 
