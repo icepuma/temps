@@ -24,9 +24,14 @@ fn whitespace_required<'a>() -> impl Parser<'a, &'a str, (), ParserError<'a>> + 
 fn number<'a>() -> impl Parser<'a, &'a str, i64, ParserError<'a>> + Clone {
     choice((
         digit_number(),
+        // Longer patterns must come before shorter ones to prevent partial matches
+        keyword_ci("a couple").to(2),
+        keyword_ci("a few").to(3),
+        keyword_ci("couple of").to(2),
+        keyword_ci("a dozen").to(12),
         keyword_ci("an").to(1),
-        keyword_ci("one").to(1),
         keyword_ci("a").to(1),
+        keyword_ci("one").to(1),
         keyword_ci("two").to(2),
         keyword_ci("three").to(3),
         keyword_ci("four").to(4),
@@ -130,6 +135,7 @@ fn weekday<'a>() -> impl Parser<'a, &'a str, Weekday, ParserError<'a>> + Clone {
 
 fn day_shortcuts<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
     choice((
+        keyword_ci("day after tomorrow").to(DayReference::DayAfterTomorrow),
         keyword_ci("today").to(DayReference::Today),
         keyword_ci("yesterday").to(DayReference::Yesterday),
         keyword_ci("tomorrow").to(DayReference::Tomorrow),
@@ -161,7 +167,14 @@ fn simple_weekday<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a
 }
 
 fn day_reference<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
-    choice((day_shortcuts(), modified_weekday(), simple_weekday()))
+    choice((
+        the_day_after_tomorrow(),
+        day_shortcuts(),
+        modified_weekday(),
+        this_weekday(),
+        weekend_ref(),
+        simple_weekday(),
+    ))
 }
 
 fn meridiem<'a>() -> impl Parser<'a, &'a str, Meridiem, ParserError<'a>> + Clone {
@@ -209,15 +222,250 @@ fn time_digits<'a>()
     choice((time_with_minutes(), hour_meridiem()))
 }
 
-fn time_expr<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
-    time_digits().map(|(hour, minute, second, meridiem)| {
-        TimeExpression::Time(Time {
-            hour,
-            minute,
-            second,
-            meridiem,
-        })
+/// Parse a raw hour (number or named time like "noon") for use in fractional expressions.
+fn raw_hour<'a>() -> impl Parser<'a, &'a str, u8, ParserError<'a>> + Clone {
+    choice((
+        two_digit_number().try_map(|h, span| {
+            if h <= 23 {
+                Ok(h)
+            } else {
+                Err(Rich::custom(span, "hour must be 0-23"))
+            }
+        }),
+        keyword_ci("noon").to(12u8),
+        keyword_ci("midnight").to(0u8),
+    ))
+}
+
+/// Parse fractional time: "half past X", "quarter past X", "quarter to X".
+fn fractional_time<'a>()
+-> impl Parser<'a, &'a str, (u8, u8, u8, Option<Meridiem>), ParserError<'a>> + Clone {
+    let half_past = keyword_ci("half past")
+        .ignore_then(whitespace_required())
+        .ignore_then(raw_hour())
+        .map(|h| (h, 30u8, 0u8, None::<Meridiem>));
+
+    let quarter_past = keyword_ci("quarter past")
+        .ignore_then(whitespace_required())
+        .ignore_then(raw_hour())
+        .map(|h| (h, 15u8, 0u8, None::<Meridiem>));
+
+    let quarter_to = keyword_ci("quarter to")
+        .ignore_then(whitespace_required())
+        .ignore_then(raw_hour())
+        .map(|h| {
+            if h == 0 {
+                (23u8, 45u8, 0u8, None::<Meridiem>)
+            } else {
+                (h - 1, 45u8, 0u8, None::<Meridiem>)
+            }
+        });
+
+    choice((half_past, quarter_past, quarter_to)).try_map(|(hour, minute, second, mer), span| {
+        if time_utils::is_valid_time(hour, minute, second, mer) {
+            Ok((hour, minute, second, mer))
+        } else {
+            Err(Rich::custom(span, "invalid time"))
+        }
     })
+}
+
+fn time_expr<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+    choice((
+        fractional_time().map(|(hour, minute, second, meridiem)| {
+            TimeExpression::Time(Time {
+                hour,
+                minute,
+                second,
+                meridiem,
+            })
+        }),
+        time_digits().map(|(hour, minute, second, meridiem)| {
+            TimeExpression::Time(Time {
+                hour,
+                minute,
+                second,
+                meridiem,
+            })
+        }),
+    ))
+}
+
+fn named_time<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+    choice((
+        keyword_ci("noon").to(TimeExpression::Time(Time {
+            hour: 12,
+            minute: 0,
+            second: 0,
+            meridiem: None,
+        })),
+        keyword_ci("midnight").to(TimeExpression::Time(Time {
+            hour: 0,
+            minute: 0,
+            second: 0,
+            meridiem: None,
+        })),
+        keyword_ci("teatime").to(TimeExpression::Time(Time {
+            hour: 16,
+            minute: 0,
+            second: 0,
+            meridiem: None,
+        })),
+    ))
+}
+
+/// Parse part-of-day: "morning", "afternoon", "evening", "night".
+/// Returns a Time with a default hour.
+fn part_of_day<'a>() -> impl Parser<'a, &'a str, Time, ParserError<'a>> + Clone {
+    choice((
+        keyword_ci("morning").to(Time {
+            hour: 8,
+            minute: 0,
+            second: 0,
+            meridiem: None,
+        }),
+        keyword_ci("afternoon").to(Time {
+            hour: 13,
+            minute: 0,
+            second: 0,
+            meridiem: None,
+        }),
+        keyword_ci("evening").to(Time {
+            hour: 18,
+            minute: 0,
+            second: 0,
+            meridiem: None,
+        }),
+        keyword_ci("night").to(Time {
+            hour: 20,
+            minute: 0,
+            second: 0,
+            meridiem: None,
+        }),
+    ))
+}
+
+/// Day reference followed by a part of day: "tomorrow morning", "today afternoon", etc.
+fn day_with_part_of_day<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+    day_reference()
+        .then_ignore(whitespace_required())
+        .then(part_of_day())
+        .map(|(day, time)| TimeExpression::DayTime(DayTime { day, time }))
+}
+
+/// "this" + day-like expression: "this morning", "this afternoon", "this evening".
+fn this_part_of_day<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+    keyword_ci("this")
+        .ignore_then(whitespace_required())
+        .ignore_then(part_of_day())
+        .map(|time| {
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Today,
+                time,
+            })
+        })
+}
+
+/// "this" + weekday: "this Monday", "this Friday".
+fn this_weekday<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
+    keyword_ci("this")
+        .ignore_then(whitespace_required())
+        .ignore_then(weekday())
+        .map(|day| DayReference::Weekday {
+            day,
+            modifier: None,
+        })
+}
+
+/// "this weekend" / "next weekend".
+fn weekend_ref<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
+    choice((
+        keyword_ci("this weekend").to(DayReference::Weekday {
+            day: Weekday::Saturday,
+            modifier: None,
+        }),
+        keyword_ci("next weekend").to(DayReference::Weekday {
+            day: Weekday::Saturday,
+            modifier: Some(WeekdayModifier::Next),
+        }),
+    ))
+}
+
+/// Standalone expressions that map to DayTime.
+fn standalone_daytime<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+    choice((
+        keyword_ci("tonight").to(TimeExpression::DayTime(DayTime {
+            day: DayReference::Today,
+            time: Time {
+                hour: 20,
+                minute: 0,
+                second: 0,
+                meridiem: None,
+            },
+        })),
+        choice((
+            keyword_ci("eod"),
+            keyword_ci("end of day"),
+            keyword_ci("end of the day"),
+        ))
+        .to(TimeExpression::DayTime(DayTime {
+            day: DayReference::Today,
+            time: Time {
+                hour: 17,
+                minute: 0,
+                second: 0,
+                meridiem: None,
+            },
+        })),
+    ))
+}
+
+/// "the day after tomorrow" — synonym with "the" prefix.
+fn the_day_after_tomorrow<'a>() -> impl Parser<'a, &'a str, DayReference, ParserError<'a>> + Clone {
+    keyword_ci("the day after tomorrow").to(DayReference::DayAfterTomorrow)
+}
+
+/// "the day before yesterday" — two days ago.
+fn the_day_before_yesterday<'a>()
+-> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+    keyword_ci("the day before yesterday").to(TimeExpression::Relative(RelativeTime {
+        amount: 2,
+        unit: TimeUnit::Day,
+        direction: Direction::Past,
+    }))
+}
+
+/// "fortnight" = 2 weeks (future direction assumed for scheduling).
+fn fortnight<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+    keyword_ci("fortnight").to(TimeExpression::Relative(RelativeTime {
+        amount: 2,
+        unit: TimeUnit::Week,
+        direction: Direction::Future,
+    }))
+}
+
+/// "later" / "later today" — vague future (~2 hours).
+fn later_expr<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+    choice((keyword_ci("later today"), keyword_ci("later"))).to(TimeExpression::Relative(
+        RelativeTime {
+            amount: 2,
+            unit: TimeUnit::Hour,
+            direction: Direction::Future,
+        },
+    ))
+}
+
+/// "a week from now" / "a week from today".
+fn week_from_now<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
+    choice((
+        keyword_ci("a week from today"),
+        keyword_ci("a week from now"),
+    ))
+    .to(TimeExpression::Relative(RelativeTime {
+        amount: 1,
+        unit: TimeUnit::Week,
+        direction: Direction::Future,
+    }))
 }
 
 fn day_at_time<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> + Clone {
@@ -308,13 +556,21 @@ fn parser<'a>() -> impl Parser<'a, &'a str, TimeExpression, ParserError<'a>> {
         iso_datetime().labelled("ISO 8601 datetime"),
         date_format().labelled("calendar date"),
         day_at_time().labelled("day with time"),
+        day_with_part_of_day().labelled("day with part of day"),
         now_expr().labelled("`now`"),
+        standalone_daytime().labelled("standalone (tonight, EOD)"),
+        this_part_of_day().labelled("this morning/afternoon/evening"),
         day_reference()
             .map(TimeExpression::Day)
             .labelled("day reference"),
+        named_time().labelled("named time (noon, midnight, teatime)"),
         time_expr().labelled("time of day"),
         relative_past().labelled("`<n> <unit> ago`"),
         relative_future().labelled("`in <n> <unit>`"),
+        week_from_now().labelled("a week from now/today"),
+        fortnight().labelled("fortnight"),
+        the_day_before_yesterday().labelled("the day before yesterday"),
+        later_expr().labelled("later/later today"),
     ))
     .padded()
     .then_ignore(end())

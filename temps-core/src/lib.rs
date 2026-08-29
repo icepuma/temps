@@ -230,6 +230,8 @@ pub enum DayReference {
     Yesterday,
     /// Tomorrow's date
     Tomorrow,
+    /// Day after tomorrow's date
+    DayAfterTomorrow,
     /// A specific weekday
     Weekday {
         /// The day of the week

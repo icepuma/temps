@@ -279,6 +279,23 @@ impl TimeParser for JiffProvider {
                                 )
                             })
                     }
+                    DayReference::DayAfterTomorrow => {
+                        let day_after = now.checked_add(Span::new().days(2)).map_err(|e| {
+                            TempsError::date_calculation_with_source(
+                                "Failed to calculate day after tomorrow",
+                                e.to_string(),
+                            )
+                        })?;
+                        let date = day_after.date();
+                        date.at(0, 0, 0, 0)
+                            .to_zoned(now.time_zone().clone())
+                            .map_err(|e| {
+                                TempsError::date_calculation_with_source(
+                                    "Failed to create day after tomorrow's date",
+                                    e.to_string(),
+                                )
+                            })
+                    }
                     DayReference::Weekday { day, modifier } => {
                         let target_weekday = match day {
                             Weekday::Monday => jiff::civil::Weekday::Monday,

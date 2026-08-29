@@ -1123,9 +1123,66 @@ fn test_day_shortcuts_english() {
         ("today", TimeExpression::Day(DayReference::Today)),
         ("tomorrow", TimeExpression::Day(DayReference::Tomorrow)),
         ("yesterday", TimeExpression::Day(DayReference::Yesterday)),
+        (
+            "day after tomorrow",
+            TimeExpression::Day(DayReference::DayAfterTomorrow),
+        ),
         ("TODAY", TimeExpression::Day(DayReference::Today)),
         ("Tomorrow", TimeExpression::Day(DayReference::Tomorrow)),
         ("YESTERDAY", TimeExpression::Day(DayReference::Yesterday)),
+        (
+            "Day After Tomorrow",
+            TimeExpression::Day(DayReference::DayAfterTomorrow),
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let result = parse(input, Language::English);
+        assert!(result.is_ok(), "Failed to parse: {input}");
+        let parsed = result.unwrap();
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
+    }
+}
+
+#[test]
+fn test_named_times_english() {
+    let test_cases = vec![
+        (
+            "noon",
+            TimeExpression::Time(Time {
+                hour: 12,
+                minute: 0,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
+        (
+            "midnight",
+            TimeExpression::Time(Time {
+                hour: 0,
+                minute: 0,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
+        (
+            "NOON",
+            TimeExpression::Time(Time {
+                hour: 12,
+                minute: 0,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
+        (
+            "Midnight",
+            TimeExpression::Time(Time {
+                hour: 0,
+                minute: 0,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
     ];
 
     for (input, expected) in test_cases {
@@ -1441,6 +1498,445 @@ fn test_weekday_modifiers_german() {
 
     for (input, expected) in test_cases {
         let result = parse(input, Language::German);
+        assert!(result.is_ok(), "Failed to parse: {input}");
+        let parsed = result.unwrap();
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
+    }
+}
+
+// ── Fractional times ──
+
+#[test]
+fn test_fractional_times_english() {
+    let test_cases = vec![
+        (
+            "half past 3",
+            TimeExpression::Time(Time {
+                hour: 3,
+                minute: 30,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
+        (
+            "half past noon",
+            TimeExpression::Time(Time {
+                hour: 12,
+                minute: 30,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
+        (
+            "quarter past 6",
+            TimeExpression::Time(Time {
+                hour: 6,
+                minute: 15,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
+        (
+            "quarter to 3",
+            TimeExpression::Time(Time {
+                hour: 2,
+                minute: 45,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
+        (
+            "quarter to midnight",
+            TimeExpression::Time(Time {
+                hour: 23,
+                minute: 45,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
+        (
+            "quarter to noon",
+            TimeExpression::Time(Time {
+                hour: 11,
+                minute: 45,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let result = parse(input, Language::English);
+        assert!(result.is_ok(), "Failed to parse: {input}");
+        let parsed = result.unwrap();
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
+    }
+}
+
+// ── Number words (couple, few, dozen) ──
+
+#[test]
+fn test_number_words_english() {
+    let test_cases = vec![
+        (
+            "in a couple hours",
+            TimeExpression::Relative(RelativeTime {
+                amount: 2,
+                unit: TimeUnit::Hour,
+                direction: Direction::Future,
+            }),
+        ),
+        (
+            "in a few minutes",
+            TimeExpression::Relative(RelativeTime {
+                amount: 3,
+                unit: TimeUnit::Minute,
+                direction: Direction::Future,
+            }),
+        ),
+        (
+            "a couple hours ago",
+            TimeExpression::Relative(RelativeTime {
+                amount: 2,
+                unit: TimeUnit::Hour,
+                direction: Direction::Past,
+            }),
+        ),
+        (
+            "a dozen minutes ago",
+            TimeExpression::Relative(RelativeTime {
+                amount: 12,
+                unit: TimeUnit::Minute,
+                direction: Direction::Past,
+            }),
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let result = parse(input, Language::English);
+        assert!(result.is_ok(), "Failed to parse: {input}");
+        let parsed = result.unwrap();
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
+    }
+}
+
+// ── Part of day: "tomorrow morning", "today afternoon" ──
+
+#[test]
+fn test_part_of_day_english() {
+    let test_cases = vec![
+        (
+            "tomorrow morning",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Tomorrow,
+                time: Time {
+                    hour: 8,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "tomorrow afternoon",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Tomorrow,
+                time: Time {
+                    hour: 13,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "tomorrow evening",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Tomorrow,
+                time: Time {
+                    hour: 18,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "today evening",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Today,
+                time: Time {
+                    hour: 18,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let result = parse(input, Language::English);
+        assert!(result.is_ok(), "Failed to parse: {input}");
+        let parsed = result.unwrap();
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
+    }
+}
+
+// ── "this" expressions ──
+
+#[test]
+fn test_this_expressions_english() {
+    let test_cases = vec![
+        (
+            "this morning",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Today,
+                time: Time {
+                    hour: 8,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "this afternoon",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Today,
+                time: Time {
+                    hour: 13,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "this evening",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Today,
+                time: Time {
+                    hour: 18,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "this night",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Today,
+                time: Time {
+                    hour: 20,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "this Monday",
+            TimeExpression::Day(DayReference::Weekday {
+                day: Weekday::Monday,
+                modifier: None,
+            }),
+        ),
+        (
+            "this Friday",
+            TimeExpression::Day(DayReference::Weekday {
+                day: Weekday::Friday,
+                modifier: None,
+            }),
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let result = parse(input, Language::English);
+        assert!(result.is_ok(), "Failed to parse: {input}");
+        let parsed = result.unwrap();
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
+    }
+}
+
+// ── Weekend references ──
+
+#[test]
+fn test_weekend_refs_english() {
+    let test_cases = vec![
+        (
+            "this weekend",
+            TimeExpression::Day(DayReference::Weekday {
+                day: Weekday::Saturday,
+                modifier: None,
+            }),
+        ),
+        (
+            "next weekend",
+            TimeExpression::Day(DayReference::Weekday {
+                day: Weekday::Saturday,
+                modifier: Some(WeekdayModifier::Next),
+            }),
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let result = parse(input, Language::English);
+        assert!(result.is_ok(), "Failed to parse: {input}");
+        let parsed = result.unwrap();
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
+    }
+}
+
+// ── Standalone expressions: tonight, EOD, teatime, later ──
+
+#[test]
+fn test_standalone_expressions_english() {
+    let test_cases = vec![
+        (
+            "tonight",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Today,
+                time: Time {
+                    hour: 20,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "EOD",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Today,
+                time: Time {
+                    hour: 17,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "end of day",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Today,
+                time: Time {
+                    hour: 17,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "end of the day",
+            TimeExpression::DayTime(DayTime {
+                day: DayReference::Today,
+                time: Time {
+                    hour: 17,
+                    minute: 0,
+                    second: 0,
+                    meridiem: None,
+                },
+            }),
+        ),
+        (
+            "teatime",
+            TimeExpression::Time(Time {
+                hour: 16,
+                minute: 0,
+                second: 0,
+                meridiem: None,
+            }),
+        ),
+        (
+            "later",
+            TimeExpression::Relative(RelativeTime {
+                amount: 2,
+                unit: TimeUnit::Hour,
+                direction: Direction::Future,
+            }),
+        ),
+        (
+            "later today",
+            TimeExpression::Relative(RelativeTime {
+                amount: 2,
+                unit: TimeUnit::Hour,
+                direction: Direction::Future,
+            }),
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let result = parse(input, Language::English);
+        assert!(result.is_ok(), "Failed to parse: {input}");
+        let parsed = result.unwrap();
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
+    }
+}
+
+// ── "the day after tomorrow" / "the day before yesterday" ──
+
+#[test]
+fn test_the_day_expressions_english() {
+    let test_cases = vec![
+        (
+            "the day after tomorrow",
+            TimeExpression::Day(DayReference::DayAfterTomorrow),
+        ),
+        (
+            "the day before yesterday",
+            TimeExpression::Relative(RelativeTime {
+                amount: 2,
+                unit: TimeUnit::Day,
+                direction: Direction::Past,
+            }),
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let result = parse(input, Language::English);
+        assert!(result.is_ok(), "Failed to parse: {input}");
+        let parsed = result.unwrap();
+        assert_eq!(parsed, expected, "Mismatch for input: {input}");
+    }
+}
+
+// ── fortnight, a week from now ──
+
+#[test]
+fn test_week_fortnight_english() {
+    let test_cases = vec![
+        (
+            "fortnight",
+            TimeExpression::Relative(RelativeTime {
+                amount: 2,
+                unit: TimeUnit::Week,
+                direction: Direction::Future,
+            }),
+        ),
+        (
+            "a week from now",
+            TimeExpression::Relative(RelativeTime {
+                amount: 1,
+                unit: TimeUnit::Week,
+                direction: Direction::Future,
+            }),
+        ),
+        (
+            "a week from today",
+            TimeExpression::Relative(RelativeTime {
+                amount: 1,
+                unit: TimeUnit::Week,
+                direction: Direction::Future,
+            }),
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let result = parse(input, Language::English);
         assert!(result.is_ok(), "Failed to parse: {input}");
         let parsed = result.unwrap();
         assert_eq!(parsed, expected, "Mismatch for input: {input}");
