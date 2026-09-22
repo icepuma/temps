@@ -18,3 +18,9 @@ name = "temps-jiff"
 
 [[package]]
 name = "temps"
+
+# Unpublished (`publish = false`): it only hosts the README doctests. `release = false` keeps
+# release-plz from bumping its version, writing a changelog, tagging or releasing it.
+[[package]]
+name = "temps-readme-check"
+release = false

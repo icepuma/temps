@@ -587,6 +587,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "temps-readme-check"
+version = "0.0.0"
+dependencies = [
+ "temps",
+]
+
+[[package]]
 name = "temps-testhelpers"
 version = "5.0.0"
 dependencies = [

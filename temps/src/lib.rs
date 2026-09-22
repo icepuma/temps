@@ -132,9 +132,3 @@ pub mod jiff {
     /// Convenience function to parse directly to `Zoned`
     pub use temps_jiff::parse_to_zoned;
 }
-
-// Compile and run the README's Rust code blocks as doctests, so the snippets users copy cannot
-// drift from the API. `cfg(doctest)` keeps this out of normal builds and of the rendered docs.
-#[cfg(all(doctest, feature = "chrono", feature = "jiff"))]
-#[doc = include_str!("../../README.md")]
-pub struct ReadmeDoctests;

@@ -21,7 +21,8 @@ jobs:
       # modules and the test suites are covered too.
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -Dwarnings
       - run: cargo nextest run --locked --workspace --all-features
-      # nextest does not run doctests; this also compiles and runs the README's code blocks.
+      # nextest does not run doctests; this also compiles and runs the README's code blocks,
+      # through the unpublished temps-readme-check crate.
       - run: cargo test --doc --locked --workspace --all-features
       - run: cargo run --locked --example chrono_example --features chrono
       - run: cargo run --locked --example jiff_example --features jiff
