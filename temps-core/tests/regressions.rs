@@ -540,19 +540,30 @@ fn a_cut_down_line_still_points_at_the_offending_token() {
     // U+00A0 is whitespace to the lexer, two bytes long and one column wide.
     let nbsp = "\u{a0}".repeat(500);
     let cases = [
-        // (input, the offending token's first characters, its line:column)
-        (format!("in{nbsp}5 blargs"), "blargs", "1:505"),
-        (format!("in\n{nbsp}5 blargs"), "blargs", "2:503"),
-        (format!("in 5 {}", "ö".repeat(100_000)), "ööö", "1:6"),
-        (format!("in{nbsp}5 {}", "ü".repeat(100_000)), "üüü", "1:505"),
+        // (input, the offending token's first characters, its line:column,
+        // whether the cut leaves out text and so is marked)
+        (format!("in{nbsp}5 blargs"), "blargs", "1:505", true),
+        // Only blanks are left out, at the front of the error's line.
+        (format!("in\n{nbsp}5 blargs"), "blargs", "2:503", false),
+        (format!("in 5 {}", "ö".repeat(100_000)), "ööö", "1:6", true),
+        (
+            format!("in{nbsp}5 {}", "ü".repeat(100_000)),
+            "üüü",
+            "1:505",
+            true,
+        ),
     ];
 
-    for (input, needle, location) in &cases {
+    for (input, needle, location, marked) in &cases {
         let (message, position) = parse_error(input, Language::English);
 
         assert_eq!(position, Some(char_index_of(input, needle)), "{message}");
         assert!(message.len() <= 2048, "{} bytes:\n{message}", message.len());
-        assert!(message.contains('…'), "the cut must be marked:\n{message}");
+        assert_eq!(
+            message.contains('…'),
+            *marked,
+            "a cut is marked if it leaves out text:\n{message}"
+        );
         assert!(
             message.contains(&format!("input:{location}")),
             "the header must name {location}:\n{message}"
@@ -644,6 +655,73 @@ fn a_cut_marks_only_text_it_left_out() {
     // Text after the kept stretch is still marked as cut.
     let (row, message) = source_row(&format!("{line}x"));
     assert!(row.ends_with('…'), "{message}");
+}
+
+/// The front of a long line follows the same rule as its back: blanks before
+/// the stretch kept around the error are left out without a `…`, and so is a
+/// single character, which is kept instead. It used to get a `…` whenever
+/// anything at all was left out. The header still names the error's column in
+/// the whole line, and the underline still starts under the offending token.
+#[test]
+fn a_front_cut_marks_only_text_it_left_out() {
+    let spaces = |n: usize| " ".repeat(n);
+    // (input, what the source row shows after its gutter, the error's column)
+    let cases = [
+        // Only blanks before the kept stretch.
+        (
+            format!("{}blargs", spaces(200)),
+            format!("{}blargs", spaces(32)),
+            201,
+        ),
+        (
+            format!("{}in 5 blargs{}q", spaces(80), spaces(32)),
+            format!("{}in 5 blargs{}q", spaces(27), spaces(32)),
+            86,
+        ),
+        // Blanks, then a single character: the character is kept.
+        (
+            format!("{}in{}5 blargs", spaces(80), spaces(29)),
+            format!("in{}5 blargs", spaces(29)),
+            114,
+        ),
+        // A single character only: it is kept.
+        (
+            format!("in{}5 blargs {}", spaces(29), "q".repeat(80)),
+            format!("in{}5 blargs {}…", spaces(29), "q".repeat(31)),
+            34,
+        ),
+        // More than a single character is still marked as cut.
+        (
+            format!("in{}5 blargs", spaces(100)),
+            format!("…{}5 blargs", spaces(30)),
+            105,
+        ),
+    ];
+
+    for (input, shown, column) in &cases {
+        let (message, _) = parse_error(input, Language::English);
+        let lines: Vec<&str> = message.lines().collect();
+        let row = lines
+            .iter()
+            .position(|line| line.contains("blargs"))
+            .unwrap_or_else(|| panic!("no source row:\n{message}"));
+        let echoed = lines[row]
+            .split_once("│ ")
+            .map(|(_, echoed)| echoed)
+            .unwrap_or_else(|| panic!("no gutter:\n{message}"));
+        assert_eq!(echoed, shown, "{input:?}:\n{message}");
+        assert!(
+            message.contains(&format!("input:1:{column}")),
+            "{input:?}: the header must name 1:{column}:\n{message}"
+        );
+
+        let token_column = char_index_of(lines[row], "blargs");
+        let underline = lines[row + 1]
+            .chars()
+            .position(|c| c == '─' || c == '┬')
+            .unwrap_or_else(|| panic!("no underline:\n{message}"));
+        assert_eq!(underline, token_column, "{input:?}:\n{message}");
+    }
 }
 
 /// A long token is quoted up to a fixed length and marked as cut.

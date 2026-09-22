@@ -349,8 +349,10 @@ pub type Result<T> = std::result::Result<T, TempsError>;
 /// The message does not grow with the input. A token longer than 32
 /// characters is quoted only in part, ending in `…`. A source line longer than
 /// 100 characters (not counting its line terminator) is cut down to the stretch
-/// around the error, with `…` marking each cut that leaves out more than
-/// whitespace and at most 32 characters underlined; the report's header still
+/// around the error, with at most 32 characters underlined. A `…` marks each
+/// end of the stretch, front or back, that leaves text out: blanks at the edge
+/// of the line are left out unmarked, and a single character is kept rather
+/// than replaced by a `…`, which would save nothing. The report's header still
 /// names the error's line and column in the whole input. The whole input stays
 /// in the error's `input` field.
 ///
@@ -624,20 +626,28 @@ impl Excerpt {
         let (line, line_idx, column) = source.get_offset_line(range.start)?;
         let line_end = line.offset() + line.len();
         let label_end = range.end.min(line_end).min(range.start + MAX_ECHOED_TOKEN);
-        let keep_start = range
+        let mut keep_start = range
             .start
             .saturating_sub(EXCERPT_CONTEXT)
             .max(line.offset());
         let mut keep_end = (label_end + EXCERPT_CONTEXT).min(line_end);
-        // The rest of the line as ariadne would echo it, which is without its
-        // trailing whitespace, terminator included. Leaving out only whitespace
-        // is no cut, and a `…` in place of a single character saves nothing.
+        // Leaving out only blanks at the edge of the line is no cut, and a `…`
+        // in place of a single character saves nothing, so either end is
+        // marked only when it leaves out more. The line before the kept
+        // stretch without its leading whitespace, which the header's column
+        // accounts for...
+        let head = input[byte(line.offset())..byte(keep_start)].trim_start();
+        let cut_front = head.chars().nth(1).is_some();
+        if !cut_front {
+            keep_start -= head.chars().count();
+        }
+        // ...and the rest of the line as ariadne would echo it, which is
+        // without its trailing whitespace, terminator included.
         let rest = input[byte(keep_end)..byte(line_end)].trim_end();
         let cut_back = rest.chars().nth(1).is_some();
         if !cut_back {
             keep_end += rest.chars().count();
         }
-        let cut_front = keep_start > line.offset();
 
         let mut text = input[..byte(line.offset())].to_string();
         if cut_front {
