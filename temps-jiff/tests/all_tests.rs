@@ -325,49 +325,120 @@ fn amounts_within_span_range_but_beyond_the_calendar_fail_without_panicking() {
     }
 }
 
+/// Asserts that `error` is a `DateCalculationError` that names the failure
+/// (`site`, a fragment of its message) instead of repeating the variant, and
+/// that it keeps jiff's reason as context.
+fn assert_says_what_failed(input: &str, error: &TempsError, site: &str) {
+    let TempsError::DateCalculationError { message, context } = error else {
+        panic!("{input:?} should be a date calculation error, got {error:?}");
+    };
+    assert_ne!(
+        message,
+        temps_core::errors::ERR_DATE_CALC_ERROR,
+        "{input:?} repeats the variant name instead of saying what failed"
+    );
+    assert!(
+        message.contains(site) && message.contains("outside the supported range"),
+        "{input:?} should say {site:?} is outside the supported range, got {message:?}"
+    );
+    assert!(
+        context.as_deref().is_some_and(|c| !c.is_empty()),
+        "{input:?} dropped jiff's reason: {error:?}"
+    );
+    assert!(
+        !error
+            .to_string()
+            .contains("Date calculation error: Date calculation error"),
+        "{input:?} renders tautologically: {error}"
+    );
+}
+
 #[test]
 fn arithmetic_beyond_the_calendar_says_what_failed() {
-    // The message must describe the failure rather than repeat the variant's
-    // own "Date calculation error" prefix, and jiff's reason must be kept.
+    // Every out-of-range message site gets a case, so none of them can fall
+    // back to the tautological "Date calculation error: Date calculation error".
     let provider = JiffProvider::at(utc(2024, 3, 15, 10, 30));
-    let near_the_end = JiffProvider::at(utc(9999, 12, 30, 21, 0));
+    let late_on_the_last_day = JiffProvider::at(utc(9999, 12, 30, 21, 0));
+    let midday_on_the_last_day = JiffProvider::at(utc(9999, 12, 30, 12, 0));
+    let near_the_start = JiffProvider::at(just_after_timestamp_min(30, TimeZone::UTC));
+    // 300 ms short of a day after `Timestamp::MIN` (`-009999-01-02T01:59:59Z`).
+    let almost_a_day_after_the_start = JiffProvider::at(
+        date(-9999, 1, 3)
+            .at(1, 59, 58, 700_000_000)
+            .to_zoned(TimeZone::UTC)
+            .unwrap(),
+    );
 
+    const RELATIVE: &str = "Relative amount";
     let cases = [
-        (&provider, "in 9000 years", Language::English),
-        (&provider, "12100 years ago", Language::English),
-        (&provider, "in 3000000 days", Language::English),
-        (&provider, "in 10000 Jahren", Language::German),
-        (&near_the_end, "later today", Language::English),
+        (&provider, "in 9000 years", Language::English, RELATIVE),
+        (&provider, "12100 years ago", Language::English, RELATIVE),
+        (&provider, "in 3000000 days", Language::English, RELATIVE),
+        (&provider, "in 10000 Jahren", Language::German, RELATIVE),
+        // Lands a fraction of a second before `Timestamp::MIN`.
+        (
+            &almost_a_day_after_the_start,
+            "1 day ago",
+            Language::English,
+            RELATIVE,
+        ),
+        (
+            &late_on_the_last_day,
+            "later today",
+            Language::English,
+            "Two hours from now",
+        ),
+        (
+            &near_the_start,
+            "today",
+            Language::English,
+            "Midnight of the requested day",
+        ),
+        (
+            &midday_on_the_last_day,
+            "tomorrow",
+            Language::English,
+            "Midnight of the requested day",
+        ),
+        (
+            &midday_on_the_last_day,
+            "tomorrow at 1:00",
+            Language::English,
+            "The time on the requested day",
+        ),
+        (
+            &near_the_start,
+            "heute um 01:00",
+            Language::German,
+            "The time on the requested day",
+        ),
     ];
 
-    for (provider, input, language) in cases {
+    for (provider, input, language, site) in cases {
         let expr = parse(input, language).unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
         let error = provider
             .parse_expression(expr)
             .expect_err("the result is outside jiff's range");
+        assert_says_what_failed(input, &error, site);
+    }
+}
 
-        let TempsError::DateCalculationError { message, context } = &error else {
-            panic!("{input:?} should be a date calculation error, got {error:?}");
-        };
-        assert_ne!(
-            message,
-            temps_core::errors::ERR_DATE_CALC_ERROR,
-            "{input:?} repeats the variant name instead of saying what failed"
-        );
-        assert!(
-            message.contains("outside the supported range"),
-            "{input:?} has an unhelpful message: {message:?}"
-        );
-        assert!(
-            context.as_deref().is_some_and(|c| !c.is_empty()),
-            "{input:?} dropped jiff's reason: {error:?}"
-        );
-        assert!(
-            !error
-                .to_string()
-                .contains("Date calculation error: Date calculation error"),
-            "{input:?} renders tautologically: {error}"
-        );
+#[test]
+fn later_today_at_the_upper_edge_resolves_two_hours_on_or_says_what_failed() {
+    // Two hours on is representable here, but tomorrow's midnight is not: in
+    // UTC its instant is past `Timestamp::MAX`, and in Tokyo the civil date
+    // 10000-01-01 does not exist. Resolving to two hours on would be right.
+    // Until that is fixed, the failure must at least say what went wrong.
+    for now in [
+        utc(9999, 12, 30, 12, 0),
+        at_zone("Asia/Tokyo", 9999, 12, 31, 5, 0),
+    ] {
+        let provider = JiffProvider::at(now.clone());
+        let expr = parse("later today", Language::English).unwrap();
+        match provider.parse_expression(expr) {
+            Ok(later) => assert_eq!(later, now.checked_add(Span::new().hours(2)).unwrap()),
+            Err(error) => assert_says_what_failed("later today", &error, "The start of tomorrow"),
+        }
     }
 }
 
