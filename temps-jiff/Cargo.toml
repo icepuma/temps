@@ -11,8 +11,8 @@ license.workspace = true
 
 [dependencies]
 temps-core = { path = "../temps-core", version = "=5.0.0" }
-jiff = "=0.2.37"
+jiff = "0.2.37"
 
 [dev-dependencies]
-mockall = "=0.15.0"
+mockall = "0.15.0"
 temps-testhelpers = { path = "../temps-testhelpers", features = ["jiff"] }
