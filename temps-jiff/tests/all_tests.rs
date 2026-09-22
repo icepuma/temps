@@ -604,6 +604,52 @@ fn day_at_time_past_either_range_edge_is_a_date_calculation_error() {
 }
 
 #[test]
+fn each_kind_of_out_of_range_result_gets_the_documented_variant() {
+    // The variants `JiffProvider`'s range-limits docs promise, one row per
+    // kind of expression. Absolute expressions carry their own zone here, so
+    // the result does not depend on the process's time zone.
+    let near_the_end = JiffProvider::at(utc(9999, 12, 30, 12, 0));
+    let near_the_start = JiffProvider::at(just_after_timestamp_min(30, TimeZone::UTC));
+    let everyday = JiffProvider::at(utc(2024, 3, 15, 10, 30));
+
+    const DATE_CALCULATION: &str = "DateCalculationError";
+    const OVERFLOW: &str = "ArithmeticOverflow";
+    const BACKEND: &str = "BackendError";
+    let cases = [
+        // A day with a time, even when only the time is out of range...
+        (&near_the_end, "today at 22:00:01", DATE_CALCULATION),
+        (&near_the_start, "today at 01:00", DATE_CALCULATION),
+        // ...but a bare time is the backend's error.
+        (&near_the_end, "22:00:01", BACKEND),
+        (&near_the_start, "01:00", BACKEND),
+        (&near_the_end, "tomorrow", DATE_CALCULATION),
+        (&near_the_end, "in 1 day", DATE_CALCULATION),
+        (&near_the_end, "9999-12-30T22:00:01Z", BACKEND),
+        (&near_the_end, "9999-12-30T17:00:01-05:00", BACKEND),
+        // The largest amounts a `Span` holds fail in the arithmetic; one more
+        // cannot be built at all.
+        (&everyday, "in 19998 years", DATE_CALCULATION),
+        (&everyday, "in 19999 years", OVERFLOW),
+        (&everyday, "in 7304484 days", DATE_CALCULATION),
+        (&everyday, "in 7304485 days", OVERFLOW),
+    ];
+    for (provider, input, variant) in cases {
+        let expr =
+            parse(input, Language::English).unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+        let error = provider
+            .parse_expression(expr)
+            .expect_err("the result is outside jiff's range");
+        let actual = match error {
+            TempsError::DateCalculationError { .. } => DATE_CALCULATION,
+            TempsError::ArithmeticOverflow { .. } => OVERFLOW,
+            TempsError::BackendError { .. } => BACKEND,
+            other => panic!("{input:?} got an unexpected variant: {other:?}"),
+        };
+        assert_eq!(actual, variant, "{input:?}");
+    }
+}
+
+#[test]
 fn calendar_arithmetic_into_the_second_before_the_first_instant_fails_cleanly() {
     // jiff 0.2.37 range-checks only the whole second when it turns the shifted
     // civil datetime back into an instant. A result a fraction of a second
