@@ -470,6 +470,102 @@ fn day_at_time_past_either_range_edge_is_a_date_calculation_error() {
 }
 
 #[test]
+fn calendar_arithmetic_into_the_second_before_the_first_instant_fails_cleanly() {
+    // jiff 0.2.37 range-checks only the whole second when it turns the shifted
+    // civil datetime back into an instant. A result a fraction of a second
+    // before `Timestamp::MIN` tripped a debug assertion inside jiff, and a
+    // release build returned a `Zoned` earlier than `Timestamp::MIN`.
+    let utc_at = |dt: DateTime| dt.to_zoned(TimeZone::UTC).unwrap();
+
+    let cases = [
+        (
+            utc_at(date(-9999, 1, 3).at(1, 59, 58, 700_000_000)),
+            "1 day ago",
+            Language::English,
+        ),
+        (
+            utc_at(date(-9999, 1, 9).at(1, 59, 58, 700_000_000)),
+            "1 week ago",
+            Language::English,
+        ),
+        (
+            utc_at(date(-9999, 2, 2).at(1, 59, 58, 700_000_000)),
+            "1 month ago",
+            Language::English,
+        ),
+        (
+            utc_at(date(-9998, 1, 2).at(1, 59, 58, 700_000_000)),
+            "1 year ago",
+            Language::English,
+        ),
+        (
+            date(-9999, 1, 2)
+                .at(20, 59, 58, 700_000_000)
+                .to_zoned(TimeZone::fixed(jiff::tz::offset(-5)))
+                .unwrap(),
+            "vor 1 Tag",
+            Language::German,
+        ),
+        // At +23:00 the limit reads as -9999-01-03T00:59:59 locally.
+        (
+            date(-9999, 1, 4)
+                .at(0, 59, 58, 700_000_000)
+                .to_zoned(TimeZone::fixed(jiff::tz::offset(23)))
+                .unwrap(),
+            "1 day ago",
+            Language::English,
+        ),
+        // Reachable from an everyday clock, too.
+        (
+            utc_at(date(2024, 1, 2).at(1, 59, 58, 500_000_000)),
+            "12023 years ago",
+            Language::English,
+        ),
+    ];
+    for (now, input, language) in cases {
+        let provider = JiffProvider::at(now.clone());
+        let expr = parse(input, language).unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+        let result = provider.parse_expression(expr);
+        assert!(
+            matches!(result, Err(TempsError::DateCalculationError { .. })),
+            "{input:?} from {now} lands before Timestamp::MIN, got {result:?}"
+        );
+    }
+
+    // Half a second later, the same expressions land just inside the range.
+    let first_instant_and_a_bit = |millis| {
+        jiff::Timestamp::MIN
+            .checked_add(jiff::SignedDuration::from_millis(millis))
+            .unwrap()
+    };
+    let cases = [
+        (
+            utc_at(date(-9999, 1, 3).at(1, 59, 59, 200_000_000)),
+            "1 day ago",
+            200,
+        ),
+        (
+            utc_at(date(-9999, 2, 2).at(1, 59, 59, 200_000_000)),
+            "1 month ago",
+            200,
+        ),
+        (
+            utc_at(date(2024, 1, 2).at(1, 59, 59, 500_000_000)),
+            "12023 years ago",
+            500,
+        ),
+    ];
+    for (now, input, millis) in cases {
+        let provider = JiffProvider::at(now);
+        assert_eq!(
+            resolve(&provider, input, Language::English).timestamp(),
+            first_instant_and_a_bit(millis),
+            "{input:?}"
+        );
+    }
+}
+
+#[test]
 fn day_at_time_can_reach_back_to_the_first_representable_day() {
     let first_day_at_22 = date(-9999, 1, 2)
         .at(22, 0, 0, 0)
@@ -968,8 +1064,9 @@ fn civil_datetime_input_is_accepted_by_the_pinned_provider() {
 //
 // jiff 0.2.37 truncates a negative Unix timestamp toward zero when it looks up
 // a zone's offset, so a pre-1970 instant in the last second before a transition
-// is given the offset that applies after the transition. These tests state the
-// correct behaviour and should pass once jiff floors the lookup key.
+// is given the offset that applies after the transition. It also range-checks
+// only the whole second when it converts a civil datetime to an instant. These
+// tests state the correct behaviour and should pass once jiff fixes each bug.
 
 #[test]
 #[ignore = "upstream jiff bug: TZif lookup truncates negative sub-second timestamps"]
@@ -1006,4 +1103,23 @@ fn upstream_jiff_bug_later_today_before_a_pre_1970_midnight_transition_stays_tod
     let later = resolve(&provider, "later today", Language::English);
     assert_eq!(later.date().to_string(), "1950-05-06");
     assert_eq!(later.offset(), jiff::tz::offset(9));
+}
+
+#[test]
+#[ignore = "upstream jiff bug: civil-to-instant conversion range-checks only the whole second"]
+fn upstream_jiff_bug_civil_datetime_just_before_timestamp_min_is_rejected() {
+    // One nanosecond before `Timestamp::MIN` (`-009999-01-02T01:59:59Z`). jiff
+    // checks only the whole second, which is in range, so a debug build panics
+    // in an assertion and a release build accepts the datetime. temps guards
+    // against this in its calendar arithmetic; see
+    // calendar_arithmetic_into_the_second_before_the_first_instant_fails_cleanly.
+    let just_before = date(-9999, 1, 2).at(1, 59, 58, 999_999_999);
+    assert!(just_before.to_zoned(TimeZone::UTC).is_err());
+
+    // Calendar arithmetic goes through the same conversion.
+    let a_day_later = date(-9999, 1, 3)
+        .at(1, 59, 58, 999_999_999)
+        .to_zoned(TimeZone::UTC)
+        .unwrap();
+    assert!(a_day_later.checked_sub(Span::new().days(1)).is_err());
 }

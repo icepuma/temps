@@ -89,8 +89,11 @@ use temps_core::{
 /// relative expressions (`12100 years ago`) and expressions resolved against a
 /// clock pinned near the edge can. Those fail with
 /// `TempsError::DateCalculationError`, or with `TempsError::BackendError` for a
-/// bare time of day that falls before the limit. A time on the first
-/// representable day still resolves when the time itself is in range: pinned at
+/// bare time of day that falls before the limit. Calendar arithmetic that
+/// lands a fraction of a second before the limit fails with
+/// `TempsError::DateCalculationError` too, although jiff itself lets it through
+/// (see the known upstream issues below). A time on the first representable day
+/// still resolves when the time itself is in range: pinned at
 /// `-009999-01-02T02:30Z`, `today` fails because that day's midnight is out of
 /// range, but `today at 22:00` succeeds.
 ///
@@ -99,15 +102,16 @@ use temps_core::{
 /// expressions. The range limits are the only intended difference between the
 /// two backends.
 ///
-/// ## Known upstream issue
+/// ## Known upstream issues
 ///
-/// jiff 0.2.37 finds a zone's offset by the instant's Unix second, which it
-/// truncates toward zero instead of flooring. For an instant before 1970 that
-/// falls within the last second before a transition and has a sub-second part,
-/// that lookup lands on the transition itself, so the `Zoned` carries the offset
-/// that applies *after* the transition. The instant is right, but the civil
-/// fields (date and wall clock) are wrong. For example, `1961-10-29T05:59:59.5Z`
-/// in `America/New_York` reads as `00:59:59.5-05:00` instead of
+/// **Offsets of pre-1970 sub-second instants.** jiff 0.2.37 finds a zone's
+/// offset by the instant's Unix second, which it truncates toward zero instead
+/// of flooring. For an instant before 1970 that falls within the last second
+/// before a transition and has a sub-second part, that lookup lands on the
+/// transition itself, so the `Zoned` carries the offset that applies *after*
+/// the transition. The instant is right, but the civil fields (date and wall
+/// clock) are wrong. For example, `1961-10-29T05:59:59.5Z` in
+/// `America/New_York` reads as `00:59:59.5-05:00` instead of
 /// `01:59:59.5-04:00`.
 ///
 /// temps derives day references, times and calendar arithmetic from the pinned
@@ -116,8 +120,23 @@ use temps_core::{
 /// because it clamps to one nanosecond before the next local midnight. When that
 /// midnight is a pre-1970 transition, the result can read as the next day.
 /// Instants from 1970 onward are not affected, and neither are whole-second
-/// instants in other expressions. The ignored `upstream_jiff_bug_*` tests in this
-/// crate cover these cases and should pass once jiff floors the second.
+/// instants in other expressions. The ignored `upstream_jiff_bug_pre_1970_*`
+/// and `upstream_jiff_bug_later_today_*` tests in this crate cover these cases
+/// and should pass once jiff floors the second.
+///
+/// **The last second before `Timestamp::MIN`.** When jiff 0.2.37 converts a
+/// civil datetime to an instant, it range-checks only the whole second. A civil
+/// datetime with a sub-second part in the last second before
+/// `jiff::Timestamp::MIN` passes that check. Debug builds then hit an assertion
+/// inside jiff, and release builds get a `Zoned` earlier than
+/// `Timestamp::MIN`. Calendar arithmetic (`1 day ago`, `12023 years ago`)
+/// produces such a datetime whenever the clock has a sub-second part and the
+/// result lands in that second, and the system clock can do that. temps checks
+/// the whole-second part of the result first and returns
+/// `TempsError::DateCalculationError`, so it neither panics nor returns an
+/// out-of-range `Zoned`. The ignored
+/// `upstream_jiff_bug_civil_datetime_just_before_timestamp_min_*` test should
+/// pass once jiff rejects these datetimes itself, and the check can go then.
 ///
 /// ## Example
 ///
@@ -205,6 +224,37 @@ const ERR_DAY_MIDNIGHT_OUT_OF_RANGE: &str =
 const ERR_DAY_TIME_OUT_OF_RANGE: &str =
     "The time on the requested day is outside the supported range";
 
+/// Fails when shifting `now` by the calendar span `span` lands in the fraction
+/// of a second before `jiff::Timestamp::MIN`. Call it before `now.checked_add`.
+///
+/// Calendar arithmetic (days and longer) moves the civil datetime and then
+/// converts it back to an instant in `now`'s zone. jiff 0.2.37 range-checks
+/// only the whole second of that conversion. A result with a sub-second part
+/// in the last second before `Timestamp::MIN` gets through: it trips a debug
+/// assertion inside jiff, and a release build returns a `Zoned` earlier than
+/// `Timestamp::MIN`. The same civil datetime without its sub-second part is
+/// checked correctly, and it is out of range exactly when the full result is.
+fn reject_calendar_shift_before_timestamp_min(
+    now: &Zoned,
+    span: Span,
+) -> std::result::Result<(), jiff::Error> {
+    // If the civil arithmetic itself fails, `checked_add` fails the same way.
+    let Ok(shifted) = now.datetime().checked_add(span) else {
+        return Ok(());
+    };
+    // A whole-second result is range-checked correctly. Offsets stay under 26
+    // hours, so a civil date after -9999-01-03 is hours clear of the limit.
+    if shifted.subsec_nanosecond() == 0 || shifted.date() > jiff::civil::date(-9999, 1, 3) {
+        return Ok(());
+    }
+    shifted
+        .with()
+        .subsec_nanosecond(0)
+        .build()?
+        .to_zoned(now.time_zone().clone())
+        .map(drop)
+}
+
 /// The civil date `day_ref` names, counted in calendar days from `now`'s local
 /// date.
 ///
@@ -282,21 +332,27 @@ impl TimeParser for JiffProvider {
                 }
                 .map_err(|_| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
 
-                // Apply the span in the correct direction
-                match rel.direction {
-                    Direction::Past => now.checked_sub(span).map_err(|e| {
-                        TempsError::date_calculation_with_source(
-                            ERR_RELATIVE_OUT_OF_RANGE,
-                            e.to_string(),
-                        )
-                    }),
-                    Direction::Future => now.checked_add(span).map_err(|e| {
-                        TempsError::date_calculation_with_source(
-                            ERR_RELATIVE_OUT_OF_RANGE,
-                            e.to_string(),
-                        )
-                    }),
+                // Apply the span in the correct direction. jiff's own
+                // `checked_sub` is `checked_add` of the negated span.
+                let span = match rel.direction {
+                    Direction::Past => span.negate(),
+                    Direction::Future => span,
+                };
+                let out_of_range = |e: jiff::Error| {
+                    TempsError::date_calculation_with_source(
+                        ERR_RELATIVE_OUT_OF_RANGE,
+                        e.to_string(),
+                    )
+                };
+                // Seconds, minutes and hours use timestamp arithmetic, which
+                // jiff range-checks correctly.
+                if matches!(
+                    rel.unit,
+                    TimeUnit::Day | TimeUnit::Week | TimeUnit::Month | TimeUnit::Year
+                ) {
+                    reject_calendar_shift_before_timestamp_min(&now, span).map_err(out_of_range)?;
                 }
+                now.checked_add(span).map_err(out_of_range)
             }
             TimeExpression::Absolute(abs) => {
                 use jiff::civil::{Date, DateTime, Time};
