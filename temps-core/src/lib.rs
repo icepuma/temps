@@ -565,6 +565,11 @@ pub mod errors {
     /// Error message for a relative amount too large for the backend to represent
     pub const ERR_AMOUNT_OUT_OF_RANGE: &str = "Relative amount is too large to represent as a date";
 
+    /// Error message for a result outside the backend's range that no
+    /// relative amount produced, such as a day reference or a time of day on
+    /// the backend's first or last date
+    pub const ERR_RESULT_OUT_OF_RANGE: &str = "Result is outside the supported date range";
+
     /// Error message for invalid date
     pub const ERR_INVALID_DATE: &str = "Invalid date";
 

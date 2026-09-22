@@ -43,9 +43,14 @@
 //! All parsing operations return `Result<DateTime<Local>, TempsError>`. Common errors include:
 //!
 //! - `ParseError`: Invalid input that cannot be parsed
-//! - `DateCalculationError`: Date arithmetic that results in invalid dates
-//! - `ArithmeticOverflow`: Results outside the range chrono can represent,
-//!   such as a relative amount of a few hundred thousand years
+//! - `ArithmeticOverflow`: Any result outside the range chrono can represent,
+//!   about 262,000 years either side of year 0, whatever produced it: a
+//!   relative amount of any unit (`in 300000 years`, `in 100000000 days`), a
+//!   day reference past chrono's first or last date (`tomorrow` on the last
+//!   one), or a time of day that is out of range on one of those dates
+//! - `DateCalculationError`: Date arithmetic that has no single result, such
+//!   as a month or year offset that lands on a local time skipped or repeated
+//!   by a daylight-saving transition, or a negative relative amount
 //! - `AmbiguousTime`: Local times that cannot be resolved to an instant
 //! - `InvalidDate`/`InvalidTime`: Components that are out of valid ranges
 
@@ -63,6 +68,25 @@ use temps_core::{
         is_valid_time, is_valid_timezone_offset,
     },
 };
+
+/// A result outside chrono's range that no relative amount produced.
+fn result_out_of_range() -> TempsError {
+    TempsError::arithmetic_overflow(ERR_RESULT_OUT_OF_RANGE)
+}
+
+/// A relative amount that moves the result outside chrono's range.
+fn amount_out_of_range() -> TempsError {
+    TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE)
+}
+
+/// Report a range failure met while resolving a relative expression as the
+/// relative amount's doing, which it is; other errors pass through.
+fn blame_amount(error: TempsError) -> TempsError {
+    match error {
+        TempsError::ArithmeticOverflow { .. } => amount_out_of_range(),
+        other => other,
+    }
+}
 
 /// `dt`, provided its local wall-clock reading is within chrono's range.
 ///
@@ -83,7 +107,7 @@ fn local_in_range(dt: DateTime<Local>) -> Option<DateTime<Local>> {
 fn last_local_instant() -> Result<DateTime<Local>> {
     resolve_local(NaiveDateTime::MAX).or_else(|_| {
         local_in_range(DateTime::<Utc>::MAX_UTC.with_timezone(&Local))
-            .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))
+            .ok_or_else(result_out_of_range)
     })
 }
 
@@ -122,7 +146,6 @@ fn last_local_instant() -> Result<DateTime<Local>> {
 /// `date_naive()` on it cannot panic.
 fn resolve_local(naive: NaiveDateTime) -> Result<DateTime<Local>> {
     use chrono::offset::LocalResult;
-    let out_of_range = || TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE);
 
     let resolved = match naive.and_local_timezone(Local) {
         LocalResult::Single(dt) => Utc.from_utc_datetime(&dt.naive_utc()).with_timezone(&Local),
@@ -140,7 +163,7 @@ fn resolve_local(naive: NaiveDateTime) -> Result<DateTime<Local>> {
                 // time is at the start of its range, not in a gap.
                 let probe = naive
                     .checked_sub_days(Days::new(days))
-                    .ok_or_else(out_of_range)?;
+                    .ok_or_else(result_out_of_range)?;
                 if let Some(dt) = probe.and_local_timezone(Local).earliest() {
                     pre_gap_offset = Some(*dt.offset());
                     break;
@@ -151,11 +174,11 @@ fn resolve_local(naive: NaiveDateTime) -> Result<DateTime<Local>> {
             // With the offset known, only the end of the range can stop this.
             let utc = naive
                 .checked_sub_offset(pre_gap_offset)
-                .ok_or_else(out_of_range)?;
+                .ok_or_else(result_out_of_range)?;
             Utc.from_utc_datetime(&utc).with_timezone(&Local)
         }
     };
-    local_in_range(resolved).ok_or_else(out_of_range)
+    local_in_range(resolved).ok_or_else(result_out_of_range)
 }
 
 /// The civil date `day_ref` names, counted in calendar days from `today`.
@@ -194,7 +217,8 @@ fn day_reference_date(today: NaiveDate, day_ref: DayReference) -> Result<NaiveDa
     } else {
         today.checked_sub_days(step)
     }
-    .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))
+    // Past the first or last date chrono can name.
+    .ok_or_else(result_out_of_range)
 }
 
 /// The wall-clock time `time` names, on the 24-hour clock.
@@ -206,6 +230,33 @@ fn wall_time(time: &Time) -> Result<NaiveTime> {
 
     let hour = convert_12_to_24_hour(time.hour, time.meridiem.as_ref());
     NaiveTime::from_hms_opt(hour.into(), time.minute.into(), time.second.into()).ok_or_else(invalid)
+}
+
+/// `now` moved by `months` calendar months in `direction`, keeping the wall
+/// clock.
+fn shift_months(
+    now: DateTime<Local>,
+    months: Months,
+    direction: Direction,
+) -> Result<DateTime<Local>> {
+    let shifted = match direction {
+        Direction::Past => now.checked_sub_months(months),
+        Direction::Future => now.checked_add_months(months),
+    };
+    shifted.ok_or_else(|| {
+        // chrono answers `None` both for a result outside its range and for a
+        // wall-clock time on the target date that a daylight-saving transition
+        // skips or repeats. Only the first is an overflow; tell them apart by
+        // redoing the arithmetic on the naive local reading.
+        let naive = match direction {
+            Direction::Past => now.naive_local().checked_sub_months(months),
+            Direction::Future => now.naive_local().checked_add_months(months),
+        };
+        match naive.map(resolve_local) {
+            None | Some(Err(TempsError::ArithmeticOverflow { .. })) => amount_out_of_range(),
+            Some(_) => TempsError::date_calculation(ERR_DATE_CALC_INVALID),
+        }
+    })
 }
 
 /// Chrono-based implementation of the TimeParser trait.
@@ -288,18 +339,9 @@ impl TimeParser for ChronoProvider {
                 // Handle months and years separately for proper date arithmetic
                 match rel.unit {
                     TimeUnit::Month => {
-                        let months = Months::new(rel.amount.try_into().map_err(|_| {
-                            TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE)
-                        })?);
-
-                        match rel.direction {
-                            Direction::Past => now
-                                .checked_sub_months(months)
-                                .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID)),
-                            Direction::Future => now
-                                .checked_add_months(months)
-                                .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID)),
-                        }
+                        let months =
+                            Months::new(rel.amount.try_into().map_err(|_| amount_out_of_range())?);
+                        shift_months(now, months, rel.direction)
                     }
                     TimeUnit::Year => {
                         // Convert years to months for proper arithmetic
@@ -307,18 +349,10 @@ impl TimeParser for ChronoProvider {
                             .amount
                             .checked_mul(MONTHS_PER_YEAR as i64)
                             .ok_or_else(|| TempsError::arithmetic_overflow(ERR_YEAR_OVERFLOW))?;
-                        let months = Months::new(months_count.try_into().map_err(|_| {
-                            TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE)
-                        })?);
-
-                        match rel.direction {
-                            Direction::Past => now
-                                .checked_sub_months(months)
-                                .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID)),
-                            Direction::Future => now
-                                .checked_add_months(months)
-                                .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID)),
-                        }
+                        let months = Months::new(
+                            months_count.try_into().map_err(|_| amount_out_of_range())?,
+                        );
+                        shift_months(now, months, rel.direction)
                     }
                     TimeUnit::Day | TimeUnit::Week => {
                         // Calendar-aware, matching the jiff backend: "in 3 days"
@@ -329,15 +363,15 @@ impl TimeParser for ChronoProvider {
                             Some(rel.amount)
                         }
                         .and_then(|d| u64::try_from(d).ok())
-                        .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
+                        .ok_or_else(amount_out_of_range)?;
 
                         let date = match rel.direction {
                             Direction::Past => now.date_naive().checked_sub_days(Days::new(days)),
                             Direction::Future => now.date_naive().checked_add_days(Days::new(days)),
                         }
-                        .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
+                        .ok_or_else(amount_out_of_range)?;
 
-                        resolve_local(date.and_time(now.time()))
+                        resolve_local(date.and_time(now.time())).map_err(blame_amount)
                     }
                     _ => {
                         // Fixed-length units. Use the fallible constructors and a
@@ -349,7 +383,7 @@ impl TimeParser for ChronoProvider {
                             TimeUnit::Hour => TimeDelta::try_hours(rel.amount),
                             _ => unreachable!(), // Day/Week/Month/Year handled above
                         }
-                        .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
+                        .ok_or_else(amount_out_of_range)?;
 
                         let shifted = match rel.direction {
                             Direction::Past => now.checked_sub_signed(duration),
@@ -359,7 +393,7 @@ impl TimeParser for ChronoProvider {
                         // the local wall clock can run out before it does.
                         shifted
                             .and_then(local_in_range)
-                            .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))
+                            .ok_or_else(amount_out_of_range)
                     }
                 }
             }
@@ -461,7 +495,7 @@ impl TimeParser for ChronoProvider {
                 let last_today = match now.date_naive().succ_opt() {
                     Some(tomorrow) => resolve_local(tomorrow.and_time(NaiveTime::MIN))?
                         .checked_sub_signed(TimeDelta::nanoseconds(1))
-                        .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?,
+                        .ok_or_else(result_out_of_range)?,
                     // chrono cannot name tomorrow, so today ends with its range.
                     None => last_local_instant()?,
                 };
@@ -518,10 +552,15 @@ impl TimeParser for ChronoProvider {
 ///
 /// This function will return an error if:
 /// - The input cannot be parsed as a valid time expression
-/// - Date calculation results in an invalid date
-/// - The result is outside the range chrono can represent
+///   ([`TempsError::ParseError`])
+/// - The result is outside the range chrono can represent, whatever produced
+///   it: a relative amount of any unit, a day reference or a time of day
 ///   ([`TempsError::ArithmeticOverflow`])
+/// - Date arithmetic has no single result, such as a month or year offset
+///   that lands on a local time a daylight-saving transition skips or repeats
+///   ([`TempsError::DateCalculationError`])
 /// - The resulting local time cannot be resolved to an instant
+///   ([`TempsError::AmbiguousTime`])
 pub fn parse_to_datetime(input: &str, language: Language) -> Result<DateTime<Local>> {
     let expr = temps_core::parse(input, language)?;
     ChronoProvider::new().parse_expression(expr)

@@ -45,6 +45,37 @@ fn assert_overflow(provider: &ChronoProvider, input: &str, language: Language) {
     );
 }
 
+/// Assert that `input` is rejected as an arithmetic overflow whose message is
+/// `expected`, so the error names the real cause.
+fn assert_overflow_saying(
+    provider: &ChronoProvider,
+    input: &str,
+    language: Language,
+    expected: &str,
+) {
+    match try_resolve(provider, input, language) {
+        Err(TempsError::ArithmeticOverflow { operation }) => {
+            assert_eq!(operation, expected, "wrong overflow message for {input:?}")
+        }
+        other => panic!("expected overflow for {input:?}, got {other:?}"),
+    }
+}
+
+/// A wall-clock time on chrono's last date that names exactly one instant in
+/// every zone: the far future runs on today's offsets, which span UTC-12 to
+/// UTC+14, so 10:00 is between 20:00 UTC the day before and 22:00 UTC.
+fn on_the_last_date() -> DateTime<Local> {
+    local_instant(NaiveDate::MAX.and_hms_opt(10, 0, 0).expect("valid time"))
+}
+
+/// A wall-clock time on chrono's first date that names exactly one instant in
+/// every zone. The far past runs on local mean time, whose offsets span
+/// -15:56 (Asia/Manila) to +15:13:42 (America/Metlakatla), so 16:00 is after
+/// the first UTC instant everywhere.
+fn on_the_first_date() -> DateTime<Local> {
+    local_instant(NaiveDate::MIN.and_hms_opt(16, 0, 0).expect("valid time"))
+}
+
 /// The local instant with the given wall-clock reading, for readings that are
 /// neither skipped nor repeated in the zone the test runs in.
 fn local_instant(naive: NaiveDateTime) -> DateTime<Local> {
@@ -363,6 +394,101 @@ fn huge_amounts_in_parsed_input_report_overflow_rather_than_panicking() {
         parse_to_datetime("999999999999 days ago", Language::English),
         Err(TempsError::ArithmeticOverflow { .. })
     ));
+}
+
+/// Month and year amounts small enough to count, but whose result is past
+/// the ±262,143 years chrono can represent, are range overflows like every
+/// other unit — not a "date calculation" failure.
+#[test]
+fn month_and_year_offsets_past_the_range_report_overflow() {
+    let provider = ChronoProvider::at(quiet_instant());
+
+    for (input, language) in [
+        ("in 300000 years", Language::English),
+        ("300000 years ago", Language::English),
+        ("in 3600000 months", Language::English),
+        ("3600000 months ago", Language::English),
+        ("in 300000 Jahren", Language::German),
+        ("vor 300000 Jahren", Language::German),
+        ("in 3600000 Monaten", Language::German),
+    ] {
+        assert_overflow_saying(&provider, input, language, errors::ERR_AMOUNT_OUT_OF_RANGE);
+    }
+
+    assert!(matches!(
+        parse_to_datetime("in 300000 years", Language::English),
+        Err(TempsError::ArithmeticOverflow { .. })
+    ));
+
+    // One month past either end of the range, from its last and first dates.
+    let last = ChronoProvider::at(on_the_last_date());
+    for input in ["in 1 month", "in 1 year", "in 12 months"] {
+        assert_overflow_saying(
+            &last,
+            input,
+            Language::English,
+            errors::ERR_AMOUNT_OUT_OF_RANGE,
+        );
+    }
+    let first = ChronoProvider::at(on_the_first_date());
+    for input in ["1 month ago", "1 year ago"] {
+        assert_overflow_saying(
+            &first,
+            input,
+            Language::English,
+            errors::ERR_AMOUNT_OUT_OF_RANGE,
+        );
+    }
+    assert_overflow_saying(
+        &first,
+        "vor einem Monat",
+        Language::German,
+        errors::ERR_AMOUNT_OUT_OF_RANGE,
+    );
+}
+
+/// A day reference that runs off either end of chrono's calendar is a range
+/// overflow, and its message does not blame a relative amount the input does
+/// not contain.
+#[test]
+fn day_references_off_the_calendar_report_overflow() {
+    let last = ChronoProvider::at(on_the_last_date());
+    for (input, language) in [
+        ("tomorrow", Language::English),
+        ("day after tomorrow", Language::English),
+        ("tomorrow at 10:00", Language::English),
+        ("tomorrow morning", Language::English),
+        ("next monday", Language::English),
+        ("next sunday at 9:00 am", Language::English),
+        ("morgen", Language::German),
+        ("übermorgen", Language::German),
+        ("morgen um 10:00", Language::German),
+    ] {
+        assert_overflow_saying(&last, input, language, errors::ERR_RESULT_OUT_OF_RANGE);
+    }
+    // Still today: nothing to overflow.
+    assert_eq!(
+        resolve(&last, "today at 11:00", Language::English).date_naive(),
+        NaiveDate::MAX
+    );
+
+    let first = ChronoProvider::at(on_the_first_date());
+    for (input, language) in [
+        ("yesterday", Language::English),
+        ("the day before yesterday", Language::English),
+        ("yesterday at 3 pm", Language::English),
+        ("last monday", Language::English),
+        ("last friday evening", Language::English),
+        ("gestern", Language::German),
+        ("vorgestern", Language::German),
+        ("gestern um 15:00", Language::German),
+    ] {
+        assert_overflow_saying(&first, input, language, errors::ERR_RESULT_OUT_OF_RANGE);
+    }
+    assert_eq!(
+        resolve(&first, "today at 5 pm", Language::English).date_naive(),
+        NaiveDate::MIN
+    );
 }
 
 // ===== Day references =====
@@ -935,12 +1061,24 @@ mod zone_pinned {
         );
         assert_eq!(day_before.date_naive(), NaiveDate::MAX.pred_opt().unwrap());
 
+        // Landing on the last date past its last UTC instant is the relative
+        // amount's doing; one day more runs off the calendar itself.
         for amount in [days_to_last_date, days_to_last_date + 1] {
-            assert_overflow(&provider, &format!("in {amount} days"), Language::English);
-            assert_overflow(&provider, &format!("in {amount} Tagen"), Language::German);
+            for (input, language) in [
+                (format!("in {amount} days"), Language::English),
+                (format!("in {amount} Tagen"), Language::German),
+            ] {
+                assert_overflow_saying(
+                    &provider,
+                    &input,
+                    language,
+                    errors::ERR_AMOUNT_OUT_OF_RANGE,
+                );
+            }
         }
 
-        // The same holds for a time of day named on that date.
+        // The same holds for a time of day named on that date, which contains
+        // no relative amount to blame.
         let provider =
             ChronoProvider::at(local_instant(NaiveDate::MAX.and_hms_opt(12, 0, 0).unwrap()));
         assert_eq!(
@@ -948,8 +1086,14 @@ mod zone_pinned {
             15,
             "15:00 is still within range"
         );
-        assert_overflow(&provider, "23:00", Language::English);
-        assert_overflow(&provider, "11 pm", Language::English);
+        for input in ["23:00", "11 pm", "tonight", "today at 11 pm"] {
+            assert_overflow_saying(
+                &provider,
+                input,
+                Language::English,
+                errors::ERR_RESULT_OUT_OF_RANGE,
+            );
+        }
     }
 
     /// West of UTC, going back to the start of chrono's range runs out of
@@ -1167,16 +1311,30 @@ mod zone_pinned {
         assert_eq!(day_after.date_naive(), NaiveDate::MIN.succ_opt().unwrap());
 
         for amount in [days_to_first_date, days_to_first_date + 1] {
-            assert_overflow(&provider, &format!("{amount} days ago"), Language::English);
-            assert_overflow(&provider, &format!("vor {amount} Tagen"), Language::German);
+            for (input, language) in [
+                (format!("{amount} days ago"), Language::English),
+                (format!("vor {amount} Tagen"), Language::German),
+            ] {
+                assert_overflow_saying(
+                    &provider,
+                    &input,
+                    language,
+                    errors::ERR_AMOUNT_OUT_OF_RANGE,
+                );
+            }
         }
 
         // Pinned at noon on that first date, its own midnight and early hours
-        // are out of range too.
+        // are out of range too, and no relative amount is to blame.
         let provider =
             ChronoProvider::at(local_instant(NaiveDate::MIN.and_hms_opt(12, 0, 0).unwrap()));
-        for input in ["today", "midnight", "3 am"] {
-            assert_overflow(&provider, input, Language::English);
+        for input in ["today", "midnight", "3 am", "today at 3 am"] {
+            assert_overflow_saying(
+                &provider,
+                input,
+                Language::English,
+                errors::ERR_RESULT_OUT_OF_RANGE,
+            );
         }
         assert_eq!(resolve(&provider, "noon", Language::English).hour(), 12);
     }
