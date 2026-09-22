@@ -1,3 +1,9 @@
+# Dependency policy: the member crates declare third-party dependencies as caret requirements
+# floored at a known-good release (`jiff = "0.2.37"`), never as exact `=` pins. These are
+# published libraries, and an exact pin would force every downstream dependency graph onto that
+# one patch release, so resolution fails as soon as another crate needs a newer one.
+# Reproducible builds come from the tracked Cargo.lock and `--locked` in CI instead. Only the
+# sibling temps-* crates, which are released together, pin each other with `=`.
 [workspace]
 members = ["temps", "temps-core", "temps-chrono", "temps-jiff", "temps-testhelpers"]
 resolver = "3"

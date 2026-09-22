@@ -10,10 +10,10 @@ readme = "../README.md"
 license.workspace = true
 
 [dependencies]
-chumsky = "=0.13.0"
-ariadne = "=0.6.0"
-thiserror = "=2.0.20"
+chumsky = "0.13.0"
+ariadne = "0.6.0"
+thiserror = "2.0.20"
 
 [dev-dependencies]
-mockall = "=0.15.0"
+mockall = "0.15.0"
 temps-testhelpers = { path = "../temps-testhelpers" }
