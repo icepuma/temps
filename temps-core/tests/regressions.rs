@@ -444,6 +444,75 @@ fn a_cut_down_line_still_points_at_the_offending_token() {
     }
 }
 
+/// The line terminator is not part of the line a diagnostic echoes, so it must
+/// not count toward the 100 characters a line may have before it is cut down.
+/// It used to: a 100-character line followed by `\n`, or a 99-character one
+/// followed by `\r\n`, was cut down, unlike the same line at the end of the
+/// input.
+#[test]
+fn the_echo_limit_does_not_count_the_line_terminator() {
+    // `in 5 ` and a 95-character word that is no time unit.
+    let full = format!("in 5 {}", "q".repeat(95));
+    // The same length, but a third of it trailing blanks.
+    let blank_tail = format!("in 5 {}{}", "q".repeat(30), " ".repeat(65));
+
+    for line in [&full, &blank_tail] {
+        assert_eq!(line.chars().count(), 100);
+        let (unterminated, _) = parse_error(line, Language::English);
+        assert!(
+            unterminated.contains(line.trim_end()),
+            "a 100-character line is echoed whole:\n{unterminated}"
+        );
+        for terminator in ["\n", "\r\n", "\r", "\u{2028}"] {
+            let (message, _) = parse_error(&format!("{line}{terminator}x"), Language::English);
+            assert_eq!(
+                message, unterminated,
+                "{terminator:?} must not change how the line before it is echoed"
+            );
+        }
+    }
+
+    // One character more is over the limit, whatever the terminator.
+    let long = format!("{full}q");
+    for terminator in ["", "\n", "\r\n"] {
+        let (message, _) = parse_error(&format!("{long}{terminator}x"), Language::English);
+        assert!(
+            !message.contains(&full),
+            "{terminator:?}: a 101-character line is cut down:\n{message}"
+        );
+    }
+}
+
+/// `…` marks where a cut left text out, and blanks at the end of a line are
+/// not text: the echo drops them anyway. A long line that holds nothing but
+/// blanks after the stretch kept around the error ends without a `…`.
+#[test]
+fn a_cut_marks_only_text_it_left_out() {
+    // The source row of the report on `input`, and the whole report.
+    let source_row = |input: &str| {
+        let (message, _) = parse_error(input, Language::English);
+        let row = message
+            .lines()
+            .find(|line| line.contains("blargs"))
+            .unwrap_or_else(|| panic!("no source row:\n{message}"))
+            .to_string();
+        (row, message)
+    };
+
+    let line = format!("in 5 blargs{}", " ".repeat(200));
+    for rest in ["", "\nx", "\r\nx"] {
+        let (row, message) = source_row(&format!("{line}{rest}"));
+        assert!(
+            row.ends_with("in 5 blargs"),
+            "{rest:?}: only blanks were cut, so no `…`:\n{message}"
+        );
+    }
+
+    // Text after the kept stretch is still marked as cut.
+    let (row, message) = source_row(&format!("{line}x"));
+    assert!(row.ends_with('…'), "{message}");
+}
+
 /// A long token is quoted up to a fixed length and marked as cut.
 #[test]
 fn a_long_token_is_quoted_only_in_part() {

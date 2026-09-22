@@ -348,8 +348,9 @@ pub type Result<T> = std::result::Result<T, TempsError>;
 ///
 /// The message does not grow with the input. A token longer than 32
 /// characters is quoted only in part, ending in `…`. A source line longer than
-/// 100 characters is cut down to the stretch around the error, with `…` marking
-/// each cut and at most 32 characters underlined; the report's header still
+/// 100 characters (not counting its line terminator) is cut down to the stretch
+/// around the error, with `…` marking each cut that leaves out more than
+/// whitespace and at most 32 characters underlined; the report's header still
 /// names the error's line and column in the whole input. The whole input stays
 /// in the error's `input` field.
 ///
@@ -436,8 +437,9 @@ pub(crate) fn rich_errors_to_temps_error_with_empty_hint(
 /// The name a rendered report gives its source, as in `input:1:6`.
 const SOURCE_ID: &str = "input";
 
-/// A source line of at most this many characters is echoed whole in a
-/// diagnostic; a longer one is cut down to an [`Excerpt`].
+/// A source line of at most this many characters, not counting its line
+/// terminator, is echoed whole in a diagnostic; a longer one is cut down to an
+/// [`Excerpt`].
 const MAX_ECHOED_LINE: usize = 100;
 
 /// Characters kept on either side of the error when a long line is cut down.
@@ -445,6 +447,22 @@ const EXCERPT_CONTEXT: usize = 32;
 
 /// Most characters of a single token that a diagnostic underlines or quotes.
 const MAX_ECHOED_TOKEN: usize = 32;
+
+/// The characters ariadne's `Source` ends a line on. It counts a line's
+/// terminator, `\r\n` as a whole, as part of the line.
+const LINE_TERMINATORS: [char; 7] = ['\r', '\n', '\x0B', '\x0C', '\u{85}', '\u{2028}', '\u{2029}'];
+
+/// The characters of `line` (of `source`) without its terminator, which is
+/// what [`MAX_ECHOED_LINE`] limits.
+fn content_len(source: &ariadne::Source<&str>, line: ariadne::Line) -> usize {
+    let text = source.get_line_text(line).unwrap_or_default();
+    let terminator = if text.ends_with("\r\n") {
+        2
+    } else {
+        usize::from(text.ends_with(LINE_TERMINATORS))
+    };
+    line.len() - terminator
+}
 
 /// Render one uncoloured report headed `headline` that underlines `range`
 /// (characters of `source`) with `detail`, or `None` if ariadne cannot.
@@ -504,11 +522,19 @@ impl Excerpt {
         let too_long = source.get_line_range(&range).any(|idx| {
             source
                 .line(idx)
-                .is_some_and(|line| line.len() > MAX_ECHOED_LINE)
+                .is_some_and(|line| content_len(source, line) > MAX_ECHOED_LINE)
         });
         if !too_long {
             return None;
         }
+
+        // Character offsets to byte offsets: always a char boundary.
+        let byte = |char_offset: usize| {
+            input
+                .char_indices()
+                .nth(char_offset)
+                .map_or(input.len(), |(byte, _)| byte)
+        };
 
         // `line` covers its terminator, so `line_end` is where the next begins.
         let (line, line_idx, column) = source.get_offset_line(range.start)?;
@@ -519,21 +545,16 @@ impl Excerpt {
             .saturating_sub(EXCERPT_CONTEXT)
             .max(line.offset());
         let mut keep_end = (label_end + EXCERPT_CONTEXT).min(line_end);
-        // One character left over could be the `\n` of a `\r\n`; cutting it
-        // off would save nothing anyway.
-        if line_end - keep_end == 1 {
-            keep_end = line_end;
+        // The rest of the line as ariadne would echo it, which is without its
+        // trailing whitespace, terminator included. Leaving out only whitespace
+        // is no cut, and a `…` in place of a single character saves nothing.
+        let rest = input[byte(keep_end)..byte(line_end)].trim_end();
+        let cut_back = rest.chars().nth(1).is_some();
+        if !cut_back {
+            keep_end += rest.chars().count();
         }
         let cut_front = keep_start > line.offset();
-        let cut_back = keep_end < line_end;
 
-        // Character offsets to byte offsets: always a char boundary.
-        let byte = |char_offset: usize| {
-            input
-                .char_indices()
-                .nth(char_offset)
-                .map_or(input.len(), |(byte, _)| byte)
-        };
         let mut text = input[..byte(line.offset())].to_string();
         if cut_front {
             text.push('…');
