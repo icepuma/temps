@@ -543,24 +543,32 @@ fn later_today_stays_within_the_current_day() {
 
 /// chrono cannot name the day after `NaiveDate::MAX`, but that is no reason to
 /// fail when two hours on is still today: nothing needs clamping.
+///
+/// The pin is 09:00 so that the premise holds in every zone: even at UTC-12,
+/// the westernmost offset in use, 11:00 local is 23:00 UTC, still within
+/// chrono's range.
 #[test]
 fn later_today_on_the_last_date_chrono_can_name_is_two_hours_on() {
     let base = local_instant(
         NaiveDate::MAX
-            .and_hms_opt(10, 0, 0)
+            .and_hms_opt(9, 0, 0)
             .expect("valid time of day"),
     );
+    let two_hours_on = base
+        .checked_add_signed(Duration::hours(2))
+        .expect("two hours after 09:00 on the last date is in range at every offset");
+    assert_eq!(two_hours_on.date_naive(), NaiveDate::MAX);
     let provider = ChronoProvider::at(base);
 
     assert_eq!(
         resolve(&provider, "later today", Language::English),
-        base + Duration::hours(2)
+        two_hours_on
     );
     assert_eq!(
         provider
             .parse_expression(TimeExpression::LaterToday)
             .unwrap(),
-        base + Duration::hours(2)
+        two_hours_on
     );
 }
 
