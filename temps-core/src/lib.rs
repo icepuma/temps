@@ -567,7 +567,25 @@ pub mod errors {
 
     /// Error message for a result outside the backend's range that no
     /// relative amount produced, such as a day reference or a time of day on
-    /// the backend's first or last date
+    /// the backend's first or last date.
+    ///
+    /// It is meant as the `operation` of a
+    /// [`TempsError::ArithmeticOverflow`](crate::TempsError::ArithmeticOverflow)
+    /// raised while resolving an expression without an amount, such as
+    /// `tomorrow`, `next monday` or `yesterday at 3 pm`. When a relative
+    /// amount moved the result out of range, use [`ERR_AMOUNT_OUT_OF_RANGE`]
+    /// instead, so that the caller learns the amount is to blame. A backend
+    /// that can name the step that failed may report a message of its own.
+    ///
+    /// ```
+    /// use temps_core::{TempsError, errors::ERR_RESULT_OUT_OF_RANGE};
+    ///
+    /// let err = TempsError::arithmetic_overflow(ERR_RESULT_OUT_OF_RANGE);
+    /// assert_eq!(
+    ///     err.to_string(),
+    ///     "Arithmetic overflow: Result is outside the supported date range"
+    /// );
+    /// ```
     pub const ERR_RESULT_OUT_OF_RANGE: &str = "Result is outside the supported date range";
 
     /// Error message for invalid date
@@ -582,7 +600,33 @@ pub mod errors {
     /// Error message for failed midnight time creation
     pub const ERR_MIDNIGHT_FAILED: &str = "Failed to create midnight time";
 
-    /// Error message for date calculation errors
+    /// The prefix that the `Display` of
+    /// [`TempsError::DateCalculationError`](crate::TempsError::DateCalculationError)
+    /// already puts before every message.
+    ///
+    /// New code should not use it as a message: it only repeats that prefix
+    /// and says nothing of what failed. Give
+    /// [`TempsError::date_calculation`](crate::TempsError::date_calculation) a
+    /// message that names the calculation instead, with the backend's own
+    /// reason as context where there is one
+    /// ([`TempsError::date_calculation_with_source`](crate::TempsError::date_calculation_with_source)).
+    /// The built-in backends no longer report it; it stays public so that code
+    /// already using it keeps compiling.
+    ///
+    /// ```
+    /// use temps_core::{TempsError, errors::ERR_DATE_CALC_ERROR};
+    ///
+    /// // The tautology this constant makes as a message...
+    /// assert_eq!(
+    ///     TempsError::date_calculation(ERR_DATE_CALC_ERROR).to_string(),
+    ///     "Date calculation error: Date calculation error"
+    /// );
+    /// // ...and a message that says what failed.
+    /// assert_eq!(
+    ///     TempsError::date_calculation("Failed to add months").to_string(),
+    ///     "Date calculation error: Failed to add months"
+    /// );
+    /// ```
     pub const ERR_DATE_CALC_ERROR: &str = "Date calculation error";
 
     /// Error message for timezone conversion errors
