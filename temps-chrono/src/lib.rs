@@ -47,7 +47,10 @@
 //!   about 262,000 years either side of year 0, whatever produced it: a
 //!   relative amount of any unit (`in 300000 years`, `in 100000000 days`), a
 //!   day reference past chrono's first or last date (`tomorrow` on the last
-//!   one), or a time of day that is out of range on one of those dates
+//!   one), or a time of day that is out of range on one of those dates. A
+//!   provider pinned with [`ChronoProvider::at`] to an instant whose own local
+//!   reading is out of range reports it for every expression that reads the
+//!   pin.
 //! - `DateCalculationError`: Date arithmetic that has no single result, such
 //!   as a month or year offset that lands on a local time skipped or repeated
 //!   by a daylight-saving transition, or a negative relative amount
@@ -68,6 +71,11 @@ use temps_core::{
         is_valid_time, is_valid_timezone_offset,
     },
 };
+
+/// Message for a pinned instant whose own local reading is outside chrono's
+/// range, so that nothing relative to it can be resolved.
+const ERR_NOW_OUT_OF_RANGE: &str =
+    "The reference time's local reading is outside the range chrono can represent";
 
 /// A result outside chrono's range that no relative amount produced.
 fn result_out_of_range() -> TempsError {
@@ -307,9 +315,26 @@ impl ChronoProvider {
     /// let resolved = provider.parse_expression(expr).unwrap();
     /// assert_eq!(resolved.date_naive().to_string(), "2024-02-01");
     /// ```
+    ///
+    /// chrono can hold instants within one zone offset of either end of its
+    /// range whose local reading is past `NaiveDateTime::MAX` or before
+    /// `NaiveDateTime::MIN`. Pinned to such an instant, every expression that
+    /// reads the pin, `now` included, fails with
+    /// [`TempsError::ArithmeticOverflow`]; absolute dates and times, which do
+    /// not read it, still resolve.
     #[must_use]
     pub fn at(now: DateTime<Local>) -> Self {
         Self { now: Some(now) }
+    }
+
+    /// The instant to resolve against, provided its local reading is within
+    /// chrono's range.
+    ///
+    /// Every arm that reads the clock goes through this, so none can reach
+    /// `date_naive()` or `naive_local()` on a pin that would make them panic.
+    fn local_now(&self) -> Result<DateTime<Local>> {
+        local_in_range(self.now())
+            .ok_or_else(|| TempsError::arithmetic_overflow(ERR_NOW_OUT_OF_RANGE))
     }
 }
 
@@ -322,7 +347,7 @@ impl TimeParser for ChronoProvider {
 
     fn parse_expression(&self, expr: TimeExpression) -> Result<Self::DateTime> {
         match expr {
-            TimeExpression::Now => Ok(self.now()),
+            TimeExpression::Now => self.local_now(),
             TimeExpression::Relative(rel) => {
                 if rel.amount < 0 {
                     return Err(TempsError::date_calculation(
@@ -330,7 +355,7 @@ impl TimeParser for ChronoProvider {
                     ));
                 }
 
-                let now = self.now();
+                let now = self.local_now()?;
 
                 if rel.amount == 0 {
                     return Ok(now);
@@ -467,22 +492,22 @@ impl TimeParser for ChronoProvider {
                 Ok(datetime)
             }
             TimeExpression::Day(day_ref) => {
-                let date = day_reference_date(self.now().date_naive(), day_ref)?;
+                let date = day_reference_date(self.local_now()?.date_naive(), day_ref)?;
                 resolve_local(date.and_time(NaiveTime::MIN))
             }
             TimeExpression::Time(time) => {
                 let wall = wall_time(&time)?;
-                resolve_local(self.now().date_naive().and_time(wall))
+                resolve_local(self.local_now()?.date_naive().and_time(wall))
             }
             TimeExpression::DayTime(day_time) => {
                 // Only the requested wall time is resolved to an instant. Going
                 // through the day's midnight first would fail on a day whose
                 // midnight is out of range even though the time itself is not.
-                let date = day_reference_date(self.now().date_naive(), day_time.day)?;
+                let date = day_reference_date(self.local_now()?.date_naive(), day_time.day)?;
                 resolve_local(date.and_time(wall_time(&day_time.time)?))
             }
             TimeExpression::LaterToday => {
-                let now = self.now();
+                let now = self.local_now()?;
                 // `None` when two hours on is past the end of chrono's range;
                 // the clamp below then applies.
                 let later = now

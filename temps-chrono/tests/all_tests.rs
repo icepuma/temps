@@ -1145,6 +1145,20 @@ mod zone_pinned {
         assert!(result > base);
     }
 
+    /// West of UTC it is the start of the range where a pin can have no local
+    /// reading: an hour after the first UTC instant reads as a local time
+    /// before `NaiveDateTime::MIN`.
+    #[test]
+    #[ignore = "requires TZ=America/New_York; run via us_eastern_suite"]
+    fn us_eastern_a_pin_with_no_local_reading_is_an_error_not_a_panic() {
+        let pin = (DateTime::<Utc>::MIN_UTC + TimeDelta::hours(1)).with_timezone(&Local);
+        assert!(
+            pin.naive_utc().checked_add_offset(*pin.offset()).is_none(),
+            "the pin's local reading should be before NaiveDateTime::MIN"
+        );
+        assert_pin_is_rejected(&ChronoProvider::at(pin));
+    }
+
     // --- America/Havana: transitions at local midnight ---
 
     /// Cuba ends daylight saving at 01:00 local, so 2024-11-03 00:00–00:59
@@ -1386,6 +1400,57 @@ mod zone_pinned {
             ("gestern um 15:00", Language::German),
         ] {
             assert_eq!(resolve(&second, input, language), three_pm, "{input:?}");
+        }
+    }
+
+    /// A pin chrono can hold but whose local reading is past
+    /// `NaiveDateTime::MAX`: every expression that reads the pin must fail
+    /// with an error rather than panic in `date_naive()`, and an absolute
+    /// time, which does not read it, still resolves.
+    #[test]
+    #[ignore = "requires TZ=Asia/Tokyo; run via tokyo_suite"]
+    fn tokyo_a_pin_with_no_local_reading_is_an_error_not_a_panic() {
+        let pin = (DateTime::<Utc>::MAX_UTC - TimeDelta::hours(1)).with_timezone(&Local);
+        assert!(
+            pin.naive_utc().checked_add_offset(*pin.offset()).is_none(),
+            "the pin's local reading should be past NaiveDateTime::MAX"
+        );
+        assert_pin_is_rejected(&ChronoProvider::at(pin));
+    }
+
+    /// Every expression that reads `provider`'s pin is an overflow; absolute
+    /// times, which do not, still resolve.
+    fn assert_pin_is_rejected(provider: &ChronoProvider) {
+        for (input, language) in [
+            ("now", Language::English),
+            ("later today", Language::English),
+            ("later", Language::English),
+            ("today", Language::English),
+            ("tomorrow", Language::English),
+            ("yesterday", Language::English),
+            ("monday", Language::English),
+            ("3 pm", Language::English),
+            ("tonight", Language::English),
+            ("tomorrow at 3 pm", Language::English),
+            ("in 0 seconds", Language::English),
+            ("in 0 days", Language::English),
+            ("in 1 second", Language::English),
+            ("1 second ago", Language::English),
+            ("in 1 day", Language::English),
+            ("1 day ago", Language::English),
+            ("in 1 week", Language::English),
+            ("in 1 month", Language::English),
+            ("1 month ago", Language::English),
+            ("in 1 year", Language::English),
+            ("jetzt", Language::German),
+            ("heute", Language::German),
+            ("morgen um 15:00", Language::German),
+        ] {
+            assert_overflow(provider, input, language);
+        }
+        for input in ["2024-01-15T10:00:00Z", "2024-01-15", "15/03/2024"] {
+            let result = resolve(provider, input, Language::English);
+            assert_eq!(result.year(), 2024, "{input:?}");
         }
     }
 
