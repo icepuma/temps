@@ -454,7 +454,7 @@ const LINE_TERMINATORS: [char; 7] = ['\r', '\n', '\x0B', '\x0C', '\u{85}', '\u{2
 
 /// The characters of `line` (of `source`) without its terminator, which is
 /// what [`MAX_ECHOED_LINE`] limits.
-fn content_len(source: &ariadne::Source<&str>, line: ariadne::Line) -> usize {
+fn content_len<S: AsRef<str>>(source: &ariadne::Source<S>, line: ariadne::Line) -> usize {
     let text = source.get_line_text(line).unwrap_or_default();
     let terminator = if text.ends_with("\r\n") {
         2
@@ -474,15 +474,17 @@ fn render_report<S: AsRef<str>>(
 ) -> Option<String> {
     use ariadne::{Color, Config, Label, Report, ReportKind};
 
+    let label = drawn_label(source, &range);
     let config = Config::default()
         .with_color(false)
-        .with_label_attach(label_attach(source.text(), &range));
+        .with_label_attach(label_attach(source.text(), &label));
     let mut buf = Vec::new();
-    Report::build(ReportKind::Error, (SOURCE_ID, range.clone()))
+    // The header names where `range` starts, whatever the label takes in.
+    Report::build(ReportKind::Error, (SOURCE_ID, range))
         .with_config(config)
         .with_message(headline)
         .with_label(
-            Label::new((SOURCE_ID, range))
+            Label::new((SOURCE_ID, label))
                 .with_message(detail)
                 .with_color(Color::Red),
         )
@@ -490,6 +492,46 @@ fn render_report<S: AsRef<str>>(
         .write((SOURCE_ID, source), &mut buf)
         .ok()?;
     Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// The characters of `source` to label for an error at `range`: `range`
+/// itself, unless every character in it is a combining mark, which is drawn
+/// zero columns wide. Then the label takes in the nearest character before it
+/// on its line, which a terminal draws the marks on, or, for marks that begin
+/// their line, the nearest one after them, so that [`label_attach`] has a
+/// character to attach the pointer to.
+///
+/// Such a range is a stray mark, one with no letter before it, which the
+/// lexer makes a [`Token::Punct`](crate::lexer::Token::Punct) of its own. A
+/// line of nothing but marks has nothing to take in, and keeps a label with no
+/// pointer.
+fn drawn_label<S: AsRef<str>>(
+    source: &ariadne::Source<S>,
+    range: &std::ops::Range<usize>,
+) -> std::ops::Range<usize> {
+    let drawn = |c: &char| !crate::lexer::is_combining_mark(*c);
+    let Some((line, _, _)) = source.get_offset_line(range.start) else {
+        return range.clone();
+    };
+    let offset = line.offset();
+    let chars: Vec<char> = source
+        .text()
+        .chars()
+        .skip(offset)
+        .take(content_len(source, line))
+        .collect();
+    let start = range.start - offset;
+    let end = (range.end - offset).min(chars.len());
+    if start >= end || chars[start..end].iter().any(drawn) {
+        return range.clone();
+    }
+    if let Some(before) = chars[..start].iter().rposition(drawn) {
+        offset + before..range.end
+    } else if let Some(after) = chars[end..].iter().position(drawn) {
+        range.start..offset + end + after + 1
+    } else {
+        range.clone()
+    }
 }
 
 /// Where the pointer that joins the underline of `range` (characters of
@@ -501,17 +543,16 @@ fn render_report<S: AsRef<str>>(
 /// all and the message points nowhere. That is the combining mark of a
 /// decomposed letter: the lexer keeps a mark in the word it follows (see
 /// [`Token::Word`](crate::lexer::Token::Word)), so the middle of a word such as
-/// NFD `Fu\u{308}nf` can be its U+0308. A word always starts on the letter a
-/// mark combines with, so the pointer moves to the label's start, or to its
-/// end should the label begin with a stray mark.
+/// NFD `Fu\u{308}nf` can be its U+0308. A word never starts on a mark, and a
+/// label that [`drawn_label`] widened starts or ends on the character it took
+/// in, so the pointer moves to the label's start, or failing that to its end.
 ///
 /// Only the combining marks the lexer knows (the Combining Diacritical Marks
 /// blocks) are recognised: this crate carries no Unicode width tables, and
 /// ariadne, which does, does not expose them. A label whose middle is some
 /// other zero-width character, such as a Mn vowel sign of an Indic script or a
 /// zero-width joiner, can still lose its pointer, and so does a label made of
-/// nothing but zero-width characters, a stray mark on its own, which has
-/// nothing to point at.
+/// nothing but zero-width characters, such as a line of nothing but marks.
 fn label_attach(text: &str, range: &std::ops::Range<usize>) -> ariadne::LabelAttach {
     use ariadne::LabelAttach;
 

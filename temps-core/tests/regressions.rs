@@ -322,7 +322,16 @@ fn a_failure_on_umlaut_input_still_underlines_the_offending_token() {
 fn display_column(line: &str, byte: usize) -> usize {
     line[..byte]
         .chars()
-        .filter(|c| !('\u{300}'..='\u{36f}').contains(c))
+        .filter(|c| {
+            !matches!(
+                c,
+                '\u{300}'..='\u{36f}'
+                    | '\u{1ab0}'..='\u{1aff}'
+                    | '\u{1dc0}'..='\u{1dff}'
+                    | '\u{20d0}'..='\u{20ff}'
+                    | '\u{fe20}'..='\u{fe2f}'
+            )
+        })
         .count()
 }
 
@@ -364,6 +373,80 @@ fn a_failure_on_a_decomposed_umlaut_still_points_at_the_offending_token() {
             Some(pointer),
             "{input:?}: the pointer must lead down to the message:\n{message}"
         );
+    }
+}
+
+/// A combining mark with no letter before it is a token of its own, and one
+/// that takes no column: a terminal draws it on the character before it. The
+/// pointer, drawn as wide as the character it attaches to, used to vanish on
+/// such a token, and did so too on a word that began with an `Alphabetic`
+/// mark such as U+036F (which is now a token of its own as well). It now sits
+/// under the character the mark is drawn on, or, for a mark that begins its
+/// line, the one after it, while the header still names the mark's column.
+#[test]
+fn a_failure_on_a_stray_combining_mark_still_points_at_it() {
+    // (input, the byte offset in it of the character the pointer sits under)
+    let cases = [
+        ("in 5 \u{36f}xy\u{30a}z", 4),
+        ("in 5 \u{36f}xy\u{30a}z\u{1ab0}", 4),
+        ("in 5 \u{36f}", 4),
+        ("5\u{308}", 0),
+        ("5\u{36f}\u{36f}", 0),
+        ("\u{36f}M\u{301}o\u{308}", 2),
+        ("in 5\n\u{308}x", 7),
+    ];
+
+    for lang in [Language::English, Language::German] {
+        for (input, target) in cases {
+            let (message, position) = parse_error(input, lang);
+            let lines: Vec<&str> = message.lines().collect();
+            // The error's line is the input's last, whole and at the row's end.
+            let last_line = input.lines().last().expect("non-empty");
+            let row = lines
+                .iter()
+                .position(|line| line.ends_with(last_line))
+                .unwrap_or_else(|| panic!("{lang:?} {input:?}: no source row:\n{message}"));
+
+            // The error is on the first stray mark.
+            let mark = input
+                .char_indices()
+                .find(|&(at, c)| {
+                    ('\u{300}'..='\u{36f}').contains(&c)
+                        && !input[..at].ends_with(|b: char| b.is_alphabetic())
+                })
+                .map(|(at, _)| at)
+                .expect("the input holds a stray mark");
+            assert_eq!(
+                position,
+                Some(input[..mark].chars().count()),
+                "{lang:?} {input:?}:\n{message}"
+            );
+            let line_start = input.len() - last_line.len();
+            let column = input[line_start..mark].chars().count() + 1;
+            let line_no = input.lines().count();
+            assert!(
+                message.contains(&format!("input:{line_no}:{column}")),
+                "{lang:?} {input:?}: the header must name the mark's column:\n{message}"
+            );
+
+            let row_byte = lines[row].len() - last_line.len() + (target - line_start);
+            let expected = display_column(lines[row], row_byte);
+            let pointer = lines[row + 1]
+                .chars()
+                .position(|c| c == '┬')
+                .unwrap_or_else(|| panic!("{lang:?} {input:?}: no `┬`:\n{message}"));
+            assert_eq!(
+                pointer,
+                expected,
+                "{lang:?} {input:?}: the pointer must sit under {:?}:\n{message}",
+                &input[target..]
+            );
+            assert_eq!(
+                lines[row + 2].chars().position(|c| c == '╰'),
+                Some(pointer),
+                "{lang:?} {input:?}: the pointer must lead down to the message:\n{message}"
+            );
+        }
     }
 }
 
