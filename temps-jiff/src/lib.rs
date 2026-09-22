@@ -153,6 +153,60 @@ fn jiff_time_components(
     ))
 }
 
+// Messages for arithmetic that leaves jiff's supported range. jiff's own
+// explanation travels alongside as the error's context.
+const ERR_RELATIVE_OUT_OF_RANGE: &str =
+    "Relative amount moves the date outside the supported range";
+const ERR_LATER_TODAY_OUT_OF_RANGE: &str = "Two hours from now is outside the supported range";
+const ERR_TOMORROW_START_OUT_OF_RANGE: &str =
+    "The start of tomorrow is outside the supported range";
+const ERR_TODAY_END_OUT_OF_RANGE: &str = "The last instant of today is outside the supported range";
+const ERR_DAY_MIDNIGHT_OUT_OF_RANGE: &str =
+    "Midnight of the requested day is outside the supported range";
+
+/// The civil date `day_ref` names, counted in calendar days from `now`'s local
+/// date.
+///
+/// Only the date is computed; turning it into an instant is left to the
+/// caller, so a day-at-time expression never has to materialise a midnight it
+/// was not asked for.
+fn day_reference_date(now: &Zoned, day_ref: DayReference) -> Result<jiff::civil::Date> {
+    let today = now.date();
+    let (days, description) = match day_ref {
+        DayReference::Today => return Ok(today),
+        DayReference::Yesterday => (-1, "yesterday"),
+        DayReference::Tomorrow => (1, "tomorrow"),
+        DayReference::DayBeforeYesterday => (-2, "day before yesterday"),
+        DayReference::DayAfterTomorrow => (2, "day after tomorrow"),
+        DayReference::Weekday { day, modifier } => {
+            let target_weekday = match day {
+                Weekday::Monday => jiff::civil::Weekday::Monday,
+                Weekday::Tuesday => jiff::civil::Weekday::Tuesday,
+                Weekday::Wednesday => jiff::civil::Weekday::Wednesday,
+                Weekday::Thursday => jiff::civil::Weekday::Thursday,
+                Weekday::Friday => jiff::civil::Weekday::Friday,
+                Weekday::Saturday => jiff::civil::Weekday::Saturday,
+                Weekday::Sunday => jiff::civil::Weekday::Sunday,
+            };
+
+            let current_offset = today.weekday().to_monday_zero_offset() as i64;
+            let target_offset = target_weekday.to_monday_zero_offset() as i64;
+
+            (
+                calculate_weekday_offset(current_offset, target_offset, modifier),
+                "weekday",
+            )
+        }
+    };
+
+    today.checked_add(Span::new().days(days)).map_err(|e| {
+        TempsError::date_calculation_with_source(
+            format!("Failed to calculate {description}"),
+            e.to_string(),
+        )
+    })
+}
+
 impl TimeParser for JiffProvider {
     type DateTime = Zoned;
 
@@ -190,10 +244,16 @@ impl TimeParser for JiffProvider {
                 // Apply the span in the correct direction
                 match rel.direction {
                     Direction::Past => now.checked_sub(span).map_err(|e| {
-                        TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
+                        TempsError::date_calculation_with_source(
+                            ERR_RELATIVE_OUT_OF_RANGE,
+                            e.to_string(),
+                        )
                     }),
                     Direction::Future => now.checked_add(span).map_err(|e| {
-                        TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
+                        TempsError::date_calculation_with_source(
+                            ERR_RELATIVE_OUT_OF_RANGE,
+                            e.to_string(),
+                        )
                     }),
                 }
             }
@@ -303,118 +363,15 @@ impl TimeParser for JiffProvider {
             }
             TimeExpression::Day(day_ref) => {
                 let now = self.now();
-                match day_ref {
-                    DayReference::Today => {
-                        let date = now.date();
-                        date.at(0, 0, 0, 0)
-                            .to_zoned(now.time_zone().clone())
-                            .map_err(|e| {
-                                TempsError::date_calculation_with_source(
-                                    "Failed to create today's date",
-                                    e.to_string(),
-                                )
-                            })
-                    }
-                    DayReference::Yesterday => {
-                        let date = now.date().checked_sub(Span::new().days(1)).map_err(|e| {
-                            TempsError::date_calculation_with_source(
-                                "Failed to calculate yesterday",
-                                e.to_string(),
-                            )
-                        })?;
-                        date.at(0, 0, 0, 0)
-                            .to_zoned(now.time_zone().clone())
-                            .map_err(|e| {
-                                TempsError::date_calculation_with_source(
-                                    "Failed to create yesterday's date",
-                                    e.to_string(),
-                                )
-                            })
-                    }
-                    DayReference::Tomorrow => {
-                        let date = now.date().checked_add(Span::new().days(1)).map_err(|e| {
-                            TempsError::date_calculation_with_source(
-                                "Failed to calculate tomorrow",
-                                e.to_string(),
-                            )
-                        })?;
-                        date.at(0, 0, 0, 0)
-                            .to_zoned(now.time_zone().clone())
-                            .map_err(|e| {
-                                TempsError::date_calculation_with_source(
-                                    "Failed to create tomorrow's date",
-                                    e.to_string(),
-                                )
-                            })
-                    }
-                    DayReference::DayBeforeYesterday => {
-                        let date = now.date().checked_sub(Span::new().days(2)).map_err(|e| {
-                            TempsError::date_calculation_with_source(
-                                "Failed to calculate day before yesterday",
-                                e.to_string(),
-                            )
-                        })?;
-                        date.at(0, 0, 0, 0)
-                            .to_zoned(now.time_zone().clone())
-                            .map_err(|e| {
-                                TempsError::date_calculation_with_source(
-                                    "Failed to create day before yesterday's date",
-                                    e.to_string(),
-                                )
-                            })
-                    }
-                    DayReference::DayAfterTomorrow => {
-                        let date = now.date().checked_add(Span::new().days(2)).map_err(|e| {
-                            TempsError::date_calculation_with_source(
-                                "Failed to calculate day after tomorrow",
-                                e.to_string(),
-                            )
-                        })?;
-                        date.at(0, 0, 0, 0)
-                            .to_zoned(now.time_zone().clone())
-                            .map_err(|e| {
-                                TempsError::date_calculation_with_source(
-                                    "Failed to create day after tomorrow's date",
-                                    e.to_string(),
-                                )
-                            })
-                    }
-                    DayReference::Weekday { day, modifier } => {
-                        let target_weekday = match day {
-                            Weekday::Monday => jiff::civil::Weekday::Monday,
-                            Weekday::Tuesday => jiff::civil::Weekday::Tuesday,
-                            Weekday::Wednesday => jiff::civil::Weekday::Wednesday,
-                            Weekday::Thursday => jiff::civil::Weekday::Thursday,
-                            Weekday::Friday => jiff::civil::Weekday::Friday,
-                            Weekday::Saturday => jiff::civil::Weekday::Saturday,
-                            Weekday::Sunday => jiff::civil::Weekday::Sunday,
-                        };
-
-                        let current_weekday = now.weekday();
-                        let current_offset = current_weekday.to_monday_zero_offset() as i64;
-                        let target_offset = target_weekday.to_monday_zero_offset() as i64;
-
-                        let days_to_add =
-                            calculate_weekday_offset(current_offset, target_offset, modifier);
-                        let date = now
-                            .date()
-                            .checked_add(Span::new().days(days_to_add))
-                            .map_err(|e| {
-                                TempsError::date_calculation_with_source(
-                                    "Failed to calculate weekday",
-                                    e.to_string(),
-                                )
-                            })?;
-                        date.at(0, 0, 0, 0)
-                            .to_zoned(now.time_zone().clone())
-                            .map_err(|e| {
-                                TempsError::date_calculation_with_source(
-                                    "Failed to create weekday date",
-                                    e.to_string(),
-                                )
-                            })
-                    }
-                }
+                day_reference_date(&now, day_ref)?
+                    .at(0, 0, 0, 0)
+                    .to_zoned(now.time_zone().clone())
+                    .map_err(|e| {
+                        TempsError::date_calculation_with_source(
+                            ERR_DAY_MIDNIGHT_OUT_OF_RANGE,
+                            e.to_string(),
+                        )
+                    })
             }
             TimeExpression::Time(time) => {
                 let now = self.now();
@@ -440,9 +397,11 @@ impl TimeParser for JiffProvider {
                     })
             }
             TimeExpression::DayTime(day_time) => {
-                // First get the day
-                let day_result = self.parse_expression(TimeExpression::Day(day_time.day))?;
-                let date = day_result.date();
+                // Only the requested wall time is converted to an instant. Going
+                // through the day's midnight first would fail on a day whose
+                // midnight is out of range even though the time itself is not.
+                let now = self.now();
+                let date = day_reference_date(&now, day_time.day)?;
 
                 if !is_valid_time(
                     day_time.time.hour,
@@ -464,7 +423,7 @@ impl TimeParser for JiffProvider {
                     jiff_time_components(hour, day_time.time.minute, day_time.time.second, 0)?;
 
                 date.at(hour, minute, second, nanosecond)
-                    .to_zoned(day_result.time_zone().clone())
+                    .to_zoned(now.time_zone().clone())
                     .map_err(|e| {
                         TempsError::backend_error(format!("Failed to create day time: {e}"), "jiff")
                     })
@@ -472,7 +431,10 @@ impl TimeParser for JiffProvider {
             TimeExpression::LaterToday => {
                 let now = self.now();
                 let later = now.checked_add(Span::new().hours(2)).map_err(|e| {
-                    TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
+                    TempsError::date_calculation_with_source(
+                        ERR_LATER_TODAY_OUT_OF_RANGE,
+                        e.to_string(),
+                    )
                 })?;
                 // Clamp against the true end of the local day rather than a fixed
                 // 23:59:59, which need not exist and would drop sub-second precision.
@@ -480,12 +442,18 @@ impl TimeParser for JiffProvider {
                     .date()
                     .tomorrow()
                     .map_err(|e| {
-                        TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
+                        TempsError::date_calculation_with_source(
+                            ERR_TOMORROW_START_OUT_OF_RANGE,
+                            e.to_string(),
+                        )
                     })?
                     .at(0, 0, 0, 0)
                     .to_zoned(now.time_zone().clone())
                     .map_err(|e| {
-                        TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
+                        TempsError::date_calculation_with_source(
+                            ERR_TOMORROW_START_OUT_OF_RANGE,
+                            e.to_string(),
+                        )
                     })?;
 
                 if later < tomorrow_start {
@@ -494,7 +462,10 @@ impl TimeParser for JiffProvider {
                 let last_today = tomorrow_start
                     .checked_sub(Span::new().nanoseconds(1))
                     .map_err(|e| {
-                        TempsError::date_calculation_with_source(ERR_DATE_CALC_ERROR, e.to_string())
+                        TempsError::date_calculation_with_source(
+                            ERR_TODAY_END_OUT_OF_RANGE,
+                            e.to_string(),
+                        )
                     })?;
                 // Never resolve into the past.
                 Ok(if last_today < now { now } else { last_today })
