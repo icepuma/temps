@@ -1,0 +1,19 @@
+[package]
+name = "temps-readme-check"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Compiles and runs the README's Rust code blocks as doctests (not published)"
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+# Depend on exactly what the README's Installation section tells users to add, and nothing
+# else. rustdoc lets a doctest name every direct dependency of the crate that hosts it, so an
+# extra dependency here (temps-core, say) would let a README snippet import a crate that users
+# following the README do not have, and the check would still pass. If a README block needs
+# chrono or jiff types directly, tell users to add that crate in the README first, then add it
+# here with the same requirement.
+[dependencies]
+temps = { path = "../temps", features = ["chrono", "jiff"] }

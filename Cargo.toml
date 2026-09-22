@@ -5,7 +5,14 @@
 # Reproducible builds come from the tracked Cargo.lock and `--locked` in CI instead. Only the
 # sibling temps-* crates, which are released together, pin each other with `=`.
 [workspace]
-members = ["temps", "temps-core", "temps-chrono", "temps-jiff", "temps-testhelpers"]
+members = [
+    "temps",
+    "temps-core",
+    "temps-chrono",
+    "temps-jiff",
+    "temps-testhelpers",
+    "readme-check",
+]
 resolver = "3"
 
 [workspace.package]

@@ -13,7 +13,7 @@ lint:
 test:
     cargo nextest run --workspace --all-features
 
-# Run documentation tests
+# Run documentation tests, including the README code blocks (via the temps-readme-check crate)
 doc-test:
     cargo test --doc --workspace --all-features
 
