@@ -576,8 +576,6 @@ version = "5.0.0"
 dependencies = [
  "ariadne",
  "chumsky",
- "mockall",
- "temps-testhelpers",
  "thiserror",
 ]
 
