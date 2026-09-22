@@ -307,15 +307,22 @@ fn amounts_within_span_range_but_beyond_the_calendar_fail_without_panicking() {
     // rejected by the arithmetic instead.
     let provider = JiffProvider::at(utc(2024, 3, 15, 10, 30));
 
-    let result = provider.parse_expression(TimeExpression::Relative(RelativeTime {
-        amount: 100_000,
-        unit: TimeUnit::Year,
-        direction: Direction::Future,
-    }));
-    assert!(
-        result.is_err(),
-        "100000 years should not resolve, got {result:?}"
-    );
+    for (amount, direction) in [(9_000, Direction::Future), (19_998, Direction::Past)] {
+        assert!(
+            Span::new().try_years(amount).is_ok(),
+            "{amount} years must be a valid span, or this test never reaches the arithmetic"
+        );
+
+        let result = provider.parse_expression(TimeExpression::Relative(RelativeTime {
+            amount,
+            unit: TimeUnit::Year,
+            direction,
+        }));
+        assert!(
+            matches!(result, Err(TempsError::DateCalculationError { .. })),
+            "{amount} years {direction:?} should be rejected by the arithmetic, got {result:?}"
+        );
+    }
 }
 
 #[test]
@@ -614,12 +621,13 @@ fn german_day_references_use_calendar_days_across_the_eu_transition() {
     // Europe/Berlin springs forward on 2024-03-31 at 02:00 local.
     let provider = JiffProvider::at(at_zone("Europe/Berlin", 2024, 3, 30, 23, 30));
 
-    // The German grammar has no words for the two-day references, so those are
-    // covered programmatically here and by their English spellings above.
     let cases = [
         ("heute", "2024-03-30"),
         ("morgen", "2024-03-31"),
         ("gestern", "2024-03-29"),
+        ("übermorgen", "2024-04-01"),
+        ("Übermorgen", "2024-04-01"),
+        ("vorgestern", "2024-03-28"),
     ];
 
     for (input, expected) in cases {
@@ -630,21 +638,6 @@ fn german_day_references_use_calendar_days_across_the_eu_transition() {
             "wrong date for {input:?}"
         );
         assert_eq!(resolved.hour(), 0, "{input:?} should be local midnight");
-    }
-
-    for (day_ref, expected) in [
-        (DayReference::DayAfterTomorrow, "2024-04-01"),
-        (DayReference::DayBeforeYesterday, "2024-03-28"),
-    ] {
-        let resolved = provider
-            .parse_expression(TimeExpression::Day(day_ref))
-            .unwrap();
-        assert_eq!(
-            resolved.date().to_string(),
-            expected,
-            "wrong date for {day_ref:?}"
-        );
-        assert_eq!(resolved.hour(), 0);
     }
 }
 
@@ -924,4 +917,48 @@ fn civil_datetime_input_is_accepted_by_the_pinned_provider() {
         .unwrap();
     let provider = JiffProvider::at(fixed.clone());
     assert_eq!(provider.now(), fixed);
+}
+
+// ===== Known upstream issues =====
+//
+// jiff 0.2.37 truncates a negative Unix timestamp toward zero when it looks up
+// a zone's offset, so a pre-1970 instant in the last second before a transition
+// is given the offset that applies after the transition. These tests state the
+// correct behaviour and should pass once jiff floors the lookup key.
+
+#[test]
+#[ignore = "upstream jiff bug: TZif lookup truncates negative sub-second timestamps"]
+fn upstream_jiff_bug_pre_1970_sub_second_instant_gets_the_offset_in_force() {
+    // New York fell back at 1961-10-29T06:00:00Z (02:00 EDT became 01:00 EST),
+    // so half a second earlier it was still EDT.
+    let new_york = TimeZone::get("America/New_York").unwrap();
+    let instant: jiff::Timestamp = "1961-10-29T05:59:59.5Z".parse().unwrap();
+    assert_eq!(new_york.to_offset(instant), jiff::tz::offset(-4));
+
+    // Havana sprang forward at 1965-06-01T05:00:00Z (00:00 CST became 01:00
+    // CDT). Half a second earlier the local time was 23:59:59.5 on May 31, so
+    // "today" is that day's midnight, which is never after now.
+    let havana = TimeZone::get("America/Havana").unwrap();
+    let now = "1965-06-01T04:59:59.5Z"
+        .parse::<jiff::Timestamp>()
+        .unwrap()
+        .to_zoned(havana);
+    let provider = JiffProvider::at(now.clone());
+
+    let today = resolve(&provider, "today", Language::English);
+    assert_eq!(today.date().to_string(), "1965-05-31");
+    assert!(today <= now, "today ({today}) is after now ({now})");
+}
+
+#[test]
+#[ignore = "upstream jiff bug: TZif lookup truncates negative sub-second timestamps"]
+fn upstream_jiff_bug_later_today_before_a_pre_1970_midnight_transition_stays_today() {
+    // Tokyo sprang forward at local midnight on 1950-05-07 (00:00 became 01:00).
+    // "later today" clamps to one nanosecond before that midnight, which is
+    // still 23:59:59.999999999+09:00 on May 6.
+    let provider = JiffProvider::at(at_zone("Asia/Tokyo", 1950, 5, 6, 23, 0));
+
+    let later = resolve(&provider, "later today", Language::English);
+    assert_eq!(later.date().to_string(), "1950-05-06");
+    assert_eq!(later.offset(), jiff::tz::offset(9));
 }
