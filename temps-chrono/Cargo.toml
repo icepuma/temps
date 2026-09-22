@@ -11,7 +11,7 @@ license.workspace = true
 
 [dependencies]
 temps-core = { path = "../temps-core", version = "=5.0.0" }
-chrono = "0.4.45"
+chrono = "0.4.34"
 
 [dev-dependencies]
 temps-testhelpers = { path = "../temps-testhelpers", features = ["chrono"] }

@@ -1,9 +1,17 @@
-# Dependency policy: the member crates declare third-party dependencies as caret requirements
-# floored at a known-good release (`jiff = "0.2.37"`), never as exact `=` pins. These are
-# published libraries, and an exact pin would force every downstream dependency graph onto that
-# one patch release, so resolution fails as soon as another crate needs a newer one.
-# Reproducible builds come from the tracked Cargo.lock and `--locked` in CI instead. Only the
-# sibling temps-* crates, which are released together, pin each other with `=`.
+# Dependency policy: the member crates declare third-party dependencies as caret requirements,
+# never as exact `=` pins. These are published libraries, and an exact pin would force every
+# downstream dependency graph onto that one patch release, so resolution fails as soon as
+# another crate needs a different one.
+#
+# Each floor is the OLDEST release the workspace builds and passes its tests with, not the
+# newest one, so temps also unifies with graphs that hold an older patch (through an exact pin
+# or an upper bound elsewhere). chrono 0.4.34 is the first release with `TimeDelta`; jiff,
+# thiserror, chumsky, ariadne and mockall work from the first release of their line. The
+# `minimal-versions` CI job resolves every direct dependency to its floor and runs the tests,
+# so raise a floor in the same change that starts needing a newer release.
+#
+# Cargo.lock stays at the newest versions: reproducible builds come from it and `--locked` in
+# CI. Only the sibling temps-* crates, which are released together, pin each other with `=`.
 [workspace]
 members = [
     "temps",
