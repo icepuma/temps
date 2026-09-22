@@ -317,6 +317,56 @@ fn a_failure_on_umlaut_input_still_underlines_the_offending_token() {
     );
 }
 
+/// The terminal column `byte` of `line` is drawn in, for text whose only
+/// zero-width characters are combining marks such as U+0308.
+fn display_column(line: &str, byte: usize) -> usize {
+    line[..byte]
+        .chars()
+        .filter(|c| !('\u{300}'..='\u{36f}').contains(c))
+        .count()
+}
+
+/// A decomposed (NFD) umlaut is a letter followed by U+0308 COMBINING
+/// DIAERESIS, which takes no column of its own. ariadne attaches the pointer
+/// from the underline to the message to the label's middle character and draws
+/// it as wide as that character, so when the middle of a rejected NFD word was
+/// the mark, the `┬` and the `╰` below it were not drawn at all and the
+/// message pointed nowhere.
+#[test]
+fn a_failure_on_a_decomposed_umlaut_still_points_at_the_offending_token() {
+    // Each token's middle character is the U+0308.
+    for (input, token) in [
+        ("in Fu\u{308}nf Tagen", "Fu\u{308}nf"),
+        ("in 5 Minu\u{308}ten", "Minu\u{308}ten"),
+        ("A\u{308}", "A\u{308}"),
+        ("Tu\u{308}r", "Tu\u{308}r"),
+    ] {
+        let (message, _) = parse_error(input, Language::German);
+        let lines: Vec<&str> = message.lines().collect();
+        let row = lines
+            .iter()
+            .position(|line| line.contains(token))
+            .unwrap_or_else(|| panic!("{input:?}: no source row:\n{message}"));
+
+        let pointer = lines[row + 1]
+            .chars()
+            .position(|c| c == '┬')
+            .unwrap_or_else(|| panic!("{input:?}: no `┬` under the token:\n{message}"));
+        let start = lines[row].find(token).expect("the row holds the token");
+        let columns =
+            display_column(lines[row], start)..display_column(lines[row], start + token.len());
+        assert!(
+            columns.contains(&pointer),
+            "{input:?}: the pointer is in column {pointer}, the token in {columns:?}:\n{message}"
+        );
+        assert_eq!(
+            lines[row + 2].chars().position(|c| c == '╰'),
+            Some(pointer),
+            "{input:?}: the pointer must lead down to the message:\n{message}"
+        );
+    }
+}
+
 /// The diagnostic is folded into an error message that callers may log, embed,
 /// or compare, so it must not carry terminal colour codes.
 #[test]

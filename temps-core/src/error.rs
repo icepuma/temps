@@ -474,9 +474,12 @@ fn render_report<S: AsRef<str>>(
 ) -> Option<String> {
     use ariadne::{Color, Config, Label, Report, ReportKind};
 
+    let config = Config::default()
+        .with_color(false)
+        .with_label_attach(label_attach(source.text(), &range));
     let mut buf = Vec::new();
     Report::build(ReportKind::Error, (SOURCE_ID, range.clone()))
-        .with_config(Config::default().with_color(false))
+        .with_config(config)
         .with_message(headline)
         .with_label(
             Label::new((SOURCE_ID, range))
@@ -487,6 +490,46 @@ fn render_report<S: AsRef<str>>(
         .write((SOURCE_ID, source), &mut buf)
         .ok()?;
     Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// Where the pointer that joins the underline of `range` (characters of
+/// `text`) to its message attaches: the label's middle character, as ariadne
+/// does by default, unless that one is drawn zero columns wide.
+///
+/// ariadne draws the pointer, `┬` and the `╰` below it, as wide as the
+/// character it attaches to, so on a zero-width character it is not drawn at
+/// all and the message points nowhere. That is the combining mark of a
+/// decomposed letter: the lexer keeps a mark in the word it follows (see
+/// [`Token::Word`](crate::lexer::Token::Word)), so the middle of a word such as
+/// NFD `Fu\u{308}nf` can be its U+0308. A word always starts on the letter a
+/// mark combines with, so the pointer moves to the label's start, or to its
+/// end should the label begin with a stray mark.
+///
+/// Only the combining marks the lexer knows (the Combining Diacritical Marks
+/// blocks) are recognised: this crate carries no Unicode width tables, and
+/// ariadne, which does, does not expose them. A label whose middle is some
+/// other zero-width character, such as a Mn vowel sign of an Indic script or a
+/// zero-width joiner, can still lose its pointer, and so does a label made of
+/// nothing but zero-width characters, a stray mark on its own, which has
+/// nothing to point at.
+fn label_attach(text: &str, range: &std::ops::Range<usize>) -> ariadne::LabelAttach {
+    use ariadne::LabelAttach;
+
+    let drawn = |offset: usize| {
+        text.chars()
+            .nth(offset)
+            .is_some_and(|c| !crate::lexer::is_combining_mark(c))
+    };
+    // The middle character exactly as ariadne picks it.
+    let middle = (range.start + range.end) / 2;
+    [
+        (LabelAttach::Middle, middle),
+        (LabelAttach::Start, range.start),
+        (LabelAttach::End, range.end.saturating_sub(1)),
+    ]
+    .into_iter()
+    .find(|&(_, offset)| drawn(offset))
+    .map_or(LabelAttach::Middle, |(attach, _)| attach)
 }
 
 /// The input with the line an error starts on cut down to the stretch around
