@@ -140,7 +140,7 @@ fn char_kind(c: char) -> CharKind {
 /// without this a decomposed umlaut would split its word in two. std has no
 /// general-category query and this crate carries no Unicode tables, so these
 /// are the five Combining Diacritical Marks blocks, spelled out.
-fn is_combining_mark(c: char) -> bool {
+pub(crate) fn is_combining_mark(c: char) -> bool {
     matches!(
         c,
         '\u{0300}'..='\u{036F}'
