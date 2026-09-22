@@ -226,8 +226,9 @@ fn main() {
     for (time_expr, task) in schedule {
         match parse_to_zoned(time_expr, Language::English) {
             Ok(dt) => {
-                // Calculate the span between now and the scheduled time
-                match now.until(&dt) {
+                // Calculate the span between now and the scheduled time. `until`
+                // stops at hours by default, so ask for days explicitly.
+                match now.until((jiff::Unit::Day, &dt)) {
                     Ok(span) => {
                         println!("    • {task} - {dt}");
 
