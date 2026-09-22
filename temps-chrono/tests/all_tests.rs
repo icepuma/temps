@@ -381,6 +381,8 @@ fn day_references_resolve_to_midnight_of_the_right_date() {
         ("heute", Language::German, 0),
         ("gestern", Language::German, -1),
         ("morgen", Language::German, 1),
+        ("übermorgen", Language::German, 2),
+        ("vorgestern", Language::German, -2),
     ];
 
     for (input, language, days) in cases {
@@ -722,9 +724,37 @@ fn run_zone_suite(zone: &str, filter: &str) {
         "TZ={zone} {filter} failed\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
     );
     assert!(
-        !stdout.contains("0 passed"),
+        !matched_no_tests(&stdout),
         "TZ={zone} {filter} matched no tests; has one been renamed?\n{stdout}"
     );
+}
+
+/// Whether a libtest run's output says its filter selected no tests.
+///
+/// Read from the whole `running N tests` header line: a substring match on the
+/// summary would also find `0 passed` inside `10 passed`.
+fn matched_no_tests(stdout: &str) -> bool {
+    stdout.lines().any(|line| line.trim() == "running 0 tests")
+}
+
+/// The guard must tell an empty run from one that passed 10, 20, … tests, whose
+/// summary also contains the text `0 passed`.
+#[test]
+fn zone_suite_guard_only_flags_a_run_that_matched_nothing() {
+    let summary = |count: usize| {
+        format!(
+            "\nrunning {count} tests\n\ntest result: ok. {count} passed; 0 failed; 0 ignored; \
+             0 measured; 18 filtered out; finished in 0.00s\n\n"
+        )
+    };
+
+    assert!(matched_no_tests(&summary(0)));
+    for count in [1, 3, 10, 20, 100, 110] {
+        assert!(
+            !matched_no_tests(&summary(count)),
+            "a run of {count} passing tests is not an empty run"
+        );
+    }
 }
 
 #[test]
