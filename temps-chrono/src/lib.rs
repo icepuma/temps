@@ -50,11 +50,12 @@
 //! - `InvalidDate`/`InvalidTime`: Components that are out of valid ranges
 
 use chrono::{
-    DateTime, Datelike, Days, Local, Months, NaiveDateTime, NaiveTime, TimeDelta, TimeZone, Utc,
+    DateTime, Datelike, Days, Local, Months, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta,
+    TimeZone, Utc,
 };
 use temps_core::{
-    DayReference, Direction, Language, Result, TempsError, TimeExpression, TimeParser, TimeUnit,
-    Weekday,
+    DayReference, Direction, Language, Result, TempsError, Time, TimeExpression, TimeParser,
+    TimeUnit, Weekday,
     constants::{DAYS_PER_WEEK, MONTHS_PER_YEAR},
     errors::*,
     time_utils::{
@@ -155,6 +156,56 @@ fn resolve_local(naive: NaiveDateTime) -> Result<DateTime<Local>> {
         }
     };
     local_in_range(resolved).ok_or_else(out_of_range)
+}
+
+/// The civil date `day_ref` names, counted in calendar days from `today`.
+///
+/// Only the date is computed; turning it into an instant is left to the
+/// caller, so a day-at-time expression never resolves a midnight it was not
+/// asked for. On chrono's first date, east of UTC, that midnight is before the
+/// first UTC instant even though the afternoon is not.
+fn day_reference_date(today: NaiveDate, day_ref: DayReference) -> Result<NaiveDate> {
+    let days = match day_ref {
+        DayReference::Today => 0,
+        DayReference::Yesterday => -1,
+        DayReference::Tomorrow => 1,
+        DayReference::DayBeforeYesterday => -2,
+        DayReference::DayAfterTomorrow => 2,
+        DayReference::Weekday { day, modifier } => {
+            let target_weekday = match day {
+                Weekday::Monday => chrono::Weekday::Mon,
+                Weekday::Tuesday => chrono::Weekday::Tue,
+                Weekday::Wednesday => chrono::Weekday::Wed,
+                Weekday::Thursday => chrono::Weekday::Thu,
+                Weekday::Friday => chrono::Weekday::Fri,
+                Weekday::Saturday => chrono::Weekday::Sat,
+                Weekday::Sunday => chrono::Weekday::Sun,
+            };
+
+            let current_offset = i64::from(today.weekday().num_days_from_monday());
+            let target_offset = i64::from(target_weekday.num_days_from_monday());
+            calculate_weekday_offset(current_offset, target_offset, modifier)
+        }
+    };
+
+    let step = Days::new(days.unsigned_abs());
+    if days >= 0 {
+        today.checked_add_days(step)
+    } else {
+        today.checked_sub_days(step)
+    }
+    .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))
+}
+
+/// The wall-clock time `time` names, on the 24-hour clock.
+fn wall_time(time: &Time) -> Result<NaiveTime> {
+    let invalid = || TempsError::invalid_time(time.hour, time.minute, time.second);
+    if !is_valid_time(time.hour, time.minute, time.second, time.meridiem) {
+        return Err(invalid());
+    }
+
+    let hour = convert_12_to_24_hour(time.hour, time.meridiem.as_ref());
+    NaiveTime::from_hms_opt(hour.into(), time.minute.into(), time.second.into()).ok_or_else(invalid)
 }
 
 /// Chrono-based implementation of the TimeParser trait.
@@ -313,7 +364,7 @@ impl TimeParser for ChronoProvider {
                 }
             }
             TimeExpression::Absolute(abs) => {
-                use chrono::{FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
+                use chrono::FixedOffset;
 
                 let date =
                     NaiveDate::from_ymd_opt(abs.year as i32, abs.month as u32, abs.day as u32)
@@ -382,137 +433,19 @@ impl TimeParser for ChronoProvider {
                 Ok(datetime)
             }
             TimeExpression::Day(day_ref) => {
-                let now = self.now();
-                match day_ref {
-                    DayReference::Today => {
-                        let midnight = now
-                            .date_naive()
-                            .and_hms_opt(0, 0, 0)
-                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        resolve_local(midnight)
-                    }
-                    DayReference::Yesterday => {
-                        let midnight = now
-                            .date_naive()
-                            .checked_sub_days(Days::new(1))
-                            .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?
-                            .and_hms_opt(0, 0, 0)
-                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        resolve_local(midnight)
-                    }
-                    DayReference::Tomorrow => {
-                        let midnight = now
-                            .date_naive()
-                            .checked_add_days(Days::new(1))
-                            .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?
-                            .and_hms_opt(0, 0, 0)
-                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        resolve_local(midnight)
-                    }
-                    DayReference::DayBeforeYesterday => {
-                        let midnight = now
-                            .date_naive()
-                            .checked_sub_days(Days::new(2))
-                            .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?
-                            .and_hms_opt(0, 0, 0)
-                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        resolve_local(midnight)
-                    }
-                    DayReference::DayAfterTomorrow => {
-                        let midnight = now
-                            .date_naive()
-                            .checked_add_days(Days::new(2))
-                            .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?
-                            .and_hms_opt(0, 0, 0)
-                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        resolve_local(midnight)
-                    }
-                    DayReference::Weekday { day, modifier } => {
-                        let target_weekday = match day {
-                            Weekday::Monday => chrono::Weekday::Mon,
-                            Weekday::Tuesday => chrono::Weekday::Tue,
-                            Weekday::Wednesday => chrono::Weekday::Wed,
-                            Weekday::Thursday => chrono::Weekday::Thu,
-                            Weekday::Friday => chrono::Weekday::Fri,
-                            Weekday::Saturday => chrono::Weekday::Sat,
-                            Weekday::Sunday => chrono::Weekday::Sun,
-                        };
-
-                        let current_weekday = now.weekday();
-                        let current_offset = current_weekday.num_days_from_monday() as i64;
-                        let target_offset = target_weekday.num_days_from_monday() as i64;
-
-                        let days_to_add =
-                            calculate_weekday_offset(current_offset, target_offset, modifier);
-                        let base = now.date_naive();
-                        let target_date = if days_to_add >= 0 {
-                            base.checked_add_days(Days::new(days_to_add.unsigned_abs()))
-                        } else {
-                            base.checked_sub_days(Days::new(days_to_add.unsigned_abs()))
-                        }
-                        .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?;
-
-                        let midnight = target_date
-                            .and_hms_opt(0, 0, 0)
-                            .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                        resolve_local(midnight)
-                    }
-                }
+                let date = day_reference_date(self.now().date_naive(), day_ref)?;
+                resolve_local(date.and_time(NaiveTime::MIN))
             }
             TimeExpression::Time(time) => {
-                let now = self.now();
-                if !is_valid_time(time.hour, time.minute, time.second, time.meridiem) {
-                    return Err(TempsError::invalid_time(
-                        time.hour,
-                        time.minute,
-                        time.second,
-                    ));
-                }
-
-                let hour = convert_12_to_24_hour(time.hour, time.meridiem.as_ref()) as u32;
-
-                let naive = now
-                    .date_naive()
-                    .and_hms_opt(hour, time.minute as u32, time.second as u32)
-                    .ok_or_else(|| TempsError::invalid_time(time.hour, time.minute, time.second))?;
-                resolve_local(naive)
+                let wall = wall_time(&time)?;
+                resolve_local(self.now().date_naive().and_time(wall))
             }
             TimeExpression::DayTime(day_time) => {
-                // First get the day
-                let day_result = self.parse_expression(TimeExpression::Day(day_time.day))?;
-                let date = day_result.date_naive();
-
-                if !is_valid_time(
-                    day_time.time.hour,
-                    day_time.time.minute,
-                    day_time.time.second,
-                    day_time.time.meridiem,
-                ) {
-                    return Err(TempsError::invalid_time(
-                        day_time.time.hour,
-                        day_time.time.minute,
-                        day_time.time.second,
-                    ));
-                }
-
-                let hour =
-                    convert_12_to_24_hour(day_time.time.hour, day_time.time.meridiem.as_ref())
-                        as u32;
-
-                let naive = date
-                    .and_hms_opt(
-                        hour,
-                        day_time.time.minute as u32,
-                        day_time.time.second as u32,
-                    )
-                    .ok_or_else(|| {
-                        TempsError::invalid_time(
-                            day_time.time.hour,
-                            day_time.time.minute,
-                            day_time.time.second,
-                        )
-                    })?;
-                resolve_local(naive)
+                // Only the requested wall time is resolved to an instant. Going
+                // through the day's midnight first would fail on a day whose
+                // midnight is out of range even though the time itself is not.
+                let date = day_reference_date(self.now().date_naive(), day_time.day)?;
+                resolve_local(date.and_time(wall_time(&day_time.time)?))
             }
             TimeExpression::LaterToday => {
                 let now = self.now();
@@ -540,8 +473,6 @@ impl TimeParser for ChronoProvider {
                 Ok(clamped.max(now))
             }
             TimeExpression::Date(date) => {
-                use chrono::NaiveDate;
-
                 NaiveDate::from_ymd_opt(date.year as i32, date.month as u32, date.day as u32)
                     .ok_or_else(|| TempsError::invalid_date(date.year, date.month, date.day))?
                     .and_hms_opt(0, 0, 0)

@@ -1181,6 +1181,56 @@ mod zone_pinned {
         assert_eq!(resolve(&provider, "noon", Language::English).hour(), 12);
     }
 
+    /// A day-at-time expression resolves only the wall time it names. On the
+    /// first date, midnight is before the first UTC instant, but 15:00 is not,
+    /// so "today at 3 pm" must agree with a bare "3 pm" rather than fail on a
+    /// midnight nobody asked for.
+    #[test]
+    #[ignore = "requires TZ=Asia/Tokyo; run via tokyo_suite"]
+    fn tokyo_day_at_time_on_the_first_date_does_not_need_its_midnight() {
+        let first =
+            ChronoProvider::at(local_instant(NaiveDate::MIN.and_hms_opt(12, 0, 0).unwrap()));
+        assert_overflow(&first, "today", Language::English);
+
+        for (with_day, bare, language) in [
+            ("today at 3 pm", "3 pm", Language::English),
+            ("tonight", "20:00", Language::English),
+            ("this evening", "18:00", Language::English),
+            ("this afternoon", "13:00", Language::English),
+            ("eod", "17:00", Language::English),
+            ("heute um 15:00", "15:00", Language::German),
+        ] {
+            let expected = resolve(&first, bare, language);
+            assert_eq!(expected.date_naive(), NaiveDate::MIN, "{bare:?}");
+            assert_eq!(
+                resolve(&first, with_day, language),
+                expected,
+                "{with_day:?} should agree with {bare:?}"
+            );
+        }
+
+        // The same date reached from the day after it.
+        let second = ChronoProvider::at(local_instant(
+            NaiveDate::MIN
+                .succ_opt()
+                .unwrap()
+                .and_hms_opt(12, 0, 0)
+                .unwrap(),
+        ));
+        assert_overflow(&second, "yesterday", Language::English);
+        let three_pm = local_instant(NaiveDate::MIN.and_hms_opt(15, 0, 0).unwrap());
+        for (input, language) in [
+            ("yesterday at 3 pm", Language::English),
+            (
+                &*format!("last {} at 3 pm", NaiveDate::MIN.weekday()),
+                Language::English,
+            ),
+            ("gestern um 15:00", Language::German),
+        ] {
+            assert_eq!(resolve(&second, input, language), three_pm, "{input:?}");
+        }
+    }
+
     /// Two hours after 23:00 on chrono's last date has no wall-clock reading,
     /// so "later today" stops at the last instant that has one.
     #[test]
