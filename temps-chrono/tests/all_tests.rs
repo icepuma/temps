@@ -934,10 +934,12 @@ mod zone_pinned {
     /// This reads chrono directly, so a failure here points at the time zone
     /// database rather than at temps.
     fn instants_at_local_midnight(year: i32, month: u32, day: u32) -> Vec<DateTime<Local>> {
-        let naive = NaiveDate::from_ymd_opt(year, month, day)
-            .and_then(|date| date.and_hms_opt(0, 0, 0))
-            .expect("valid civil midnight");
+        instants_at_local(civil(year, month, day, 0, 0))
+    }
 
+    /// Every instant that really renders as the civil time `naive`; see
+    /// [`instants_at_local_midnight`].
+    fn instants_at_local(naive: NaiveDateTime) -> Vec<DateTime<Local>> {
         let candidates = match naive.and_local_timezone(Local) {
             chrono::LocalResult::Single(dt) => vec![dt],
             chrono::LocalResult::Ambiguous(first, second) => vec![first, second],
@@ -949,6 +951,13 @@ mod zone_pinned {
             .map(|dt| Utc.from_utc_datetime(&dt.naive_utc()).with_timezone(&Local))
             .filter(|dt| dt.naive_local() == naive)
             .collect()
+    }
+
+    /// The civil datetime with the given calendar date and wall-clock time.
+    fn civil(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(year, month, day)
+            .and_then(|date| date.and_hms_opt(hour, minute, 0))
+            .expect("valid civil datetime")
     }
 
     // --- America/New_York: spring forward 2024-03-10 02:00, fall back 2024-11-03 02:00 ---
@@ -1042,6 +1051,56 @@ mod zone_pinned {
         assert_eq!(day_after.date_naive().to_string(), "2024-11-04");
     }
 
+    /// A month or year offset that lands on a wall-clock time the target date
+    /// skips (spring forward) or repeats (fall back) is a
+    /// `DateCalculationError`. chrono's month arithmetic answers `None` for
+    /// such a time just as it does for a result past the end of its range, and
+    /// only the latter is an overflow.
+    ///
+    /// This pins current behaviour, not the desired one. It is the still-open
+    /// round-1 bug-hunt finding #1: month and year arithmetic does not go
+    /// through `resolve_local`, so it does not shift a gap forward or pick the
+    /// earlier instant of a fold the way every other expression does, and the
+    /// jiff backend resolves these same inputs. When that is fixed, this test
+    /// should expect those instants instead.
+    #[test]
+    #[ignore = "requires TZ=America/New_York; run via us_eastern_suite"]
+    fn us_eastern_month_and_year_offsets_into_a_gap_or_fold_are_a_date_calculation_error() {
+        let gap = civil(2024, 3, 10, 2, 30);
+        let fold = civil(2024, 11, 3, 1, 30);
+        assert!(instants_at_local(gap).is_empty(), "{gap} should be skipped");
+        assert_eq!(instants_at_local(fold).len(), 2, "{fold} should repeat");
+
+        let into_gap = [
+            ("2024-02-10T02:30:00", "in 1 month", Language::English),
+            ("2024-02-10T02:30:00", "in einem Monat", Language::German),
+            ("2024-04-10T02:30:00", "1 month ago", Language::English),
+            ("2023-03-10T02:30:00", "in 1 year", Language::English),
+        ];
+        let into_fold = [
+            ("2024-10-03T01:30:00", "in 1 month", Language::English),
+            ("2024-12-03T01:30:00", "1 month ago", Language::English),
+            ("2025-11-03T01:30:00", "vor einem Jahr", Language::German),
+        ];
+        let cases = into_gap
+            .map(|case| (case, gap))
+            .into_iter()
+            .chain(into_fold.map(|case| (case, fold)));
+
+        for ((from, input, language), target) in cases {
+            let from: NaiveDateTime = from.parse().expect("valid civil datetime");
+            let provider = ChronoProvider::at(local_instant(from));
+            let case = format!("{input:?} from {from}, landing on {target}");
+            match try_resolve(&provider, input, language) {
+                Err(TempsError::DateCalculationError { message, context }) => {
+                    assert_eq!(message, errors::ERR_DATE_CALC_INVALID, "{case}");
+                    assert_eq!(context, None, "{case}");
+                }
+                other => panic!("expected a date calculation error for {case}, got {other:?}"),
+            }
+        }
+    }
+
     /// West of UTC, chrono's last date ends in UTC before it ends on the wall
     /// clock: 21:00 on it is already past the last UTC instant. Landing there
     /// is a range overflow, the same error one day further gives, not a DST
@@ -1094,6 +1153,37 @@ mod zone_pinned {
                 errors::ERR_RESULT_OUT_OF_RANGE,
             );
         }
+    }
+
+    /// A month offset whose calendar arithmetic succeeds can still land past
+    /// the last UTC instant: 20:00 on chrono's last date is 01:00 UTC the next
+    /// day in US Eastern. chrono answers `None` there just as it does for a
+    /// daylight-saving gap, so this checks the out-of-range half of that split
+    /// is still reported as the relative amount's overflow.
+    #[test]
+    #[ignore = "requires TZ=America/New_York; run via us_eastern_suite"]
+    fn us_eastern_month_offsets_past_the_utc_range_report_overflow() {
+        let from = NaiveDate::MAX - Days::new(61);
+        assert_eq!((from.month(), from.day()), (10, 31));
+        let provider = ChronoProvider::at(local_instant(from.and_hms_opt(20, 0, 0).unwrap()));
+
+        // The naive arithmetic has a result; its instant does not.
+        let target = NaiveDate::MAX.and_hms_opt(20, 0, 0).unwrap();
+        assert!(
+            instants_at_local(target).is_empty(),
+            "{target} should be past the last UTC instant"
+        );
+
+        for (input, language) in [
+            ("in 2 months", Language::English),
+            ("in 2 Monaten", Language::German),
+        ] {
+            assert_overflow_saying(&provider, input, language, errors::ERR_AMOUNT_OUT_OF_RANGE);
+        }
+
+        // One month less stays in range.
+        let result = resolve(&provider, "in 1 month", Language::English);
+        assert_eq!(result.naive_local(), civil(262142, 11, 30, 20, 0));
     }
 
     /// West of UTC, going back to the start of chrono's range runs out of
@@ -1153,10 +1243,14 @@ mod zone_pinned {
     fn us_eastern_a_pin_with_no_local_reading_is_an_error_not_a_panic() {
         let pin = (DateTime::<Utc>::MIN_UTC + TimeDelta::hours(1)).with_timezone(&Local);
         assert!(
-            pin.naive_utc().checked_add_offset(*pin.offset()).is_none(),
+            !has_local_reading(pin),
             "the pin's local reading should be before NaiveDateTime::MIN"
         );
-        assert_pin_is_rejected(&ChronoProvider::at(pin));
+        assert!(
+            has_local_reading(pin + TimeDelta::hours(10)),
+            "ten hours on, the wall clock should be readable again"
+        );
+        assert_pin_is_rejected(&ChronoProvider::at(pin), &["in 10 hours"]);
     }
 
     // --- America/Havana: transitions at local midnight ---
@@ -1353,6 +1447,35 @@ mod zone_pinned {
         assert_eq!(resolve(&provider, "noon", Language::English).hour(), 12);
     }
 
+    /// The mirror image of the US Eastern month overflow, at the start of the
+    /// range: in Tokyo, 04:00 on chrono's first date is before the first UTC
+    /// instant, although the calendar arithmetic that reaches it succeeds.
+    #[test]
+    #[ignore = "requires TZ=Asia/Tokyo; run via tokyo_suite"]
+    fn tokyo_month_offsets_before_the_utc_range_report_overflow() {
+        let from = NaiveDate::MIN + Days::new(59);
+        assert_eq!((from.month(), from.day()), (3, 1));
+        let provider = ChronoProvider::at(local_instant(from.and_hms_opt(4, 0, 0).unwrap()));
+
+        // The naive arithmetic has a result; its instant does not.
+        let target = NaiveDate::MIN.and_hms_opt(4, 0, 0).unwrap();
+        assert!(
+            instants_at_local(target).is_empty(),
+            "{target} should be before the first UTC instant"
+        );
+
+        for (input, language) in [
+            ("2 months ago", Language::English),
+            ("vor 2 Monaten", Language::German),
+        ] {
+            assert_overflow_saying(&provider, input, language, errors::ERR_AMOUNT_OUT_OF_RANGE);
+        }
+
+        // One month less stays in range.
+        let result = resolve(&provider, "1 month ago", Language::English);
+        assert_eq!(result.naive_local(), civil(-262143, 2, 1, 4, 0));
+    }
+
     /// A day-at-time expression resolves only the wall time it names. On the
     /// first date, midnight is before the first UTC instant, but 15:00 is not,
     /// so "today at 3 pm" must agree with a bare "3 pm" rather than fail on a
@@ -1412,15 +1535,38 @@ mod zone_pinned {
     fn tokyo_a_pin_with_no_local_reading_is_an_error_not_a_panic() {
         let pin = (DateTime::<Utc>::MAX_UTC - TimeDelta::hours(1)).with_timezone(&Local);
         assert!(
-            pin.naive_utc().checked_add_offset(*pin.offset()).is_none(),
+            !has_local_reading(pin),
             "the pin's local reading should be past NaiveDateTime::MAX"
         );
-        assert_pin_is_rejected(&ChronoProvider::at(pin));
+        for hours in [10, 24] {
+            assert!(
+                has_local_reading(pin - TimeDelta::hours(hours)),
+                "{hours} hours back, the wall clock should be readable again"
+            );
+        }
+        assert_pin_is_rejected(&ChronoProvider::at(pin), &["10 hours ago", "24 hours ago"]);
     }
 
-    /// Every expression that reads `provider`'s pin is an overflow; absolute
-    /// times, which do not, still resolve.
-    fn assert_pin_is_rejected(provider: &ChronoProvider) {
+    /// Whether chrono can read `dt`'s local wall clock, that is, whether
+    /// `date_naive()` and `naive_local()` on it would not panic.
+    fn has_local_reading(dt: DateTime<Local>) -> bool {
+        dt.naive_utc().checked_add_offset(*dt.offset()).is_some()
+    }
+
+    /// The overflow message for a pin whose own local reading is out of range.
+    /// The crate keeps it private, so it is spelled out here.
+    const ERR_PIN_OUT_OF_RANGE: &str =
+        "The reference time's local reading is outside the range chrono can represent";
+
+    /// Every expression that reads `provider`'s pin is an overflow that names
+    /// the pin as its cause. That includes the relative expressions in
+    /// `in_range`, whose results would themselves have a local reading chrono
+    /// can represent: the guard is on the pin, not on the result. Absolute
+    /// times, which do not read the pin, still resolve.
+    fn assert_pin_is_rejected(provider: &ChronoProvider, in_range: &[&str]) {
+        for input in in_range {
+            assert_overflow_saying(provider, input, Language::English, ERR_PIN_OUT_OF_RANGE);
+        }
         for (input, language) in [
             ("now", Language::English),
             ("later today", Language::English),
@@ -1446,7 +1592,7 @@ mod zone_pinned {
             ("heute", Language::German),
             ("morgen um 15:00", Language::German),
         ] {
-            assert_overflow(provider, input, language);
+            assert_overflow_saying(provider, input, language, ERR_PIN_OUT_OF_RANGE);
         }
         for input in ["2024-01-15T10:00:00Z", "2024-01-15", "15/03/2024"] {
             let result = resolve(provider, input, Language::English);
