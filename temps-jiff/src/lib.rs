@@ -63,22 +63,60 @@ use temps_core::{
 /// This provider uses jiff's `Zoned` as its datetime type, providing
 /// high-precision time calculations and comprehensive timezone support.
 ///
-/// ## Upper range limit
+/// ## Range limits
 ///
-/// `jiff::Timestamp::MAX` is `9999-12-30T22:00:00.999999999Z` — earlier than the
-/// end of year 9999 that a civil date allows — so the final hours of year 9999
-/// are out of reach here. A civil datetime resolves only when its instant lands
-/// at or before that timestamp, which makes the last accepted local datetime
-/// depend on the zone's offset: `9999-12-30T22:00:00` in UTC,
-/// `9999-12-30T17:00:00` at `-05:00`, `9999-12-31T07:00:00` at `+09:00`. Since a
-/// date-only expression resolves to local midnight, `9999-12-31` fails in UTC
-/// but succeeds in `Asia/Tokyo`.
+/// jiff's civil dates span the years `-9999..=9999`, and its instants run from
+/// `jiff::Timestamp::MIN` (`-009999-01-02T01:59:59Z`) to `jiff::Timestamp::MAX`
+/// (`9999-12-30T22:00:00.999999999Z`). Both instant limits fall inside the civil
+/// range, so the first hours of year -9999 and the last hours of year 9999 are
+/// out of reach. A civil datetime resolves only when its instant lands within
+/// those limits, so the extreme accepted local datetimes depend on the zone's
+/// offset.
 ///
-/// Past that point, absolute expressions fail with `TempsError::BackendError`
-/// and relative ones (`in 1 day` from `9999-12-30T12:00`, say) with
-/// `TempsError::DateCalculationError`. This is a range limit of the underlying
-/// library, not a defect: `ChronoProvider` has no equivalent limit and accepts
-/// the same expressions, and it is the one place the two backends disagree.
+/// **Upper edge.** The last accepted local datetime is `9999-12-30T22:00:00` in
+/// UTC, `9999-12-30T17:00:00` at `-05:00` and `9999-12-31T07:00:00` at `+09:00`.
+/// A date-only expression resolves to local midnight, so `9999-12-31` fails in
+/// UTC but succeeds in `Asia/Tokyo`. Past that point, absolute expressions and
+/// times of day fail with `TempsError::BackendError`. Relative expressions
+/// (`in 1 day` from `9999-12-30T12:00`, say), day references (`tomorrow`) and
+/// `later today` fail with `TempsError::DateCalculationError`.
+///
+/// **Lower edge.** The first accepted local datetime is `-009999-01-02T01:59:59`
+/// in UTC, `-009999-01-01T20:59:59` at `-05:00` and `-009999-01-02T10:59:59` at
+/// `+09:00`, so even `-9999-01-01T00:00` fails in UTC. Absolute expressions and
+/// calendar dates cannot get there, because their years are unsigned. Only
+/// relative expressions (`12100 years ago`) and expressions resolved against a
+/// clock pinned near the edge can. Those fail with
+/// `TempsError::DateCalculationError`, or with `TempsError::BackendError` for a
+/// time of day that falls before the limit. A time on the first representable
+/// day still resolves when the time itself is in range: pinned at
+/// `-009999-01-02T02:30Z`, `today` fails because that day's midnight is out of
+/// range, but `today at 22:00` succeeds.
+///
+/// These are range limits of the underlying library, not defects.
+/// `ChronoProvider` reaches far beyond both edges and accepts the same
+/// expressions. The range limits are the only intended difference between the
+/// two backends.
+///
+/// ## Known upstream issue
+///
+/// jiff 0.2.37 finds a zone's offset by the instant's Unix second, which it
+/// truncates toward zero instead of flooring. For an instant before 1970 that
+/// falls within the last second before a transition and has a sub-second part,
+/// that lookup lands on the transition itself, so the `Zoned` carries the offset
+/// that applies *after* the transition. The instant is right, but the civil
+/// fields (date and wall clock) are wrong. For example, `1961-10-29T05:59:59.5Z`
+/// in `America/New_York` reads as `00:59:59.5-05:00` instead of
+/// `01:59:59.5-04:00`.
+///
+/// temps derives day references, times and calendar arithmetic from the pinned
+/// instant's civil date, so a clock pinned in such a window carries the error
+/// into the result. `later today` can also hit it from a whole-second clock,
+/// because it clamps to one nanosecond before the next local midnight. When that
+/// midnight is a pre-1970 transition, the result can read as the next day.
+/// Instants from 1970 onward are not affected, and neither are whole-second
+/// instants in other expressions. The ignored `upstream_jiff_bug_*` tests in this
+/// crate cover these cases and should pass once jiff floors the second.
 ///
 /// ## Example
 ///
