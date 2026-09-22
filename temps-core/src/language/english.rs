@@ -708,3 +708,85 @@ impl LanguageParser for EnglishParser {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(hour: u8, minute: u8, meridiem: Option<Meridiem>) -> Time {
+        Time {
+            hour,
+            minute,
+            second: 0,
+            meridiem,
+        }
+    }
+
+    fn weekday_ref(day: Weekday, modifier: Option<WeekdayModifier>) -> DayReference {
+        DayReference::Weekday { day, modifier }
+    }
+
+    /// Each left-factored rule, run on its own up to `end()`, must parse the
+    /// bare form *and* every extension of it to the right value. Un-factoring
+    /// a rule into sibling alternatives lets the bare form commit first and
+    /// strand the tail, which turns the extended rows here into `None`.
+    #[test]
+    fn left_factored_rules_parse_the_bare_and_the_extended_form() {
+        use DayReference::{DayAfterTomorrow, Today, Tomorrow};
+        use TimeExpression::{Day, DayTime as At};
+        let with = |day, time| At(DayTime { day, time });
+        let next_monday = weekday_ref(Weekday::Monday, Some(WeekdayModifier::Next));
+        let friday = weekday_ref(Weekday::Friday, None);
+
+        for (input, expected) in [
+            ("tomorrow", Day(Tomorrow)),
+            ("tomorrow morning", with(Tomorrow, at(8, 0, None))),
+            (
+                "tomorrow at 3:30 pm",
+                with(Tomorrow, at(3, 30, Some(Meridiem::PM))),
+            ),
+            (
+                "tomorrow at 3 pm",
+                with(Tomorrow, at(3, 0, Some(Meridiem::PM))),
+            ),
+            ("today", Day(Today)),
+            ("today afternoon", with(Today, at(13, 0, None))),
+            ("next Monday", Day(next_monday)),
+            (
+                "next Monday at 9:00 am",
+                with(next_monday, at(9, 0, Some(Meridiem::AM))),
+            ),
+            ("friday", Day(friday)),
+            ("friday evening", with(friday, at(18, 0, None))),
+            ("the day after tomorrow", Day(DayAfterTomorrow)),
+            (
+                "the day after tomorrow at 10:00",
+                with(DayAfterTomorrow, at(10, 0, None)),
+            ),
+        ] {
+            assert_eq!(
+                run!(input, day_expr()),
+                Some(expected),
+                "day_expr on {input:?}"
+            );
+        }
+
+        for (input, expected) in [
+            (
+                "later",
+                TimeExpression::Relative(RelativeTime {
+                    amount: 2,
+                    unit: TimeUnit::Hour,
+                    direction: Direction::Future,
+                }),
+            ),
+            ("later today", TimeExpression::LaterToday),
+        ] {
+            assert_eq!(
+                run!(input, later_expr()),
+                Some(expected),
+                "later_expr on {input:?}"
+            );
+        }
+    }
+}

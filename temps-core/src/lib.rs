@@ -746,6 +746,27 @@ pub mod time_utils {
     }
 }
 
+/// Test helper: lex `$input`, run `$parser` over the whole of it — up to
+/// `end()`, as the top-level grammar does — and yield `Option<Output>`.
+///
+/// A macro rather than a function because the input type
+/// [`common::token_stream`] returns is opaque, so a caller cannot name it in a
+/// `where` clause. Defined here, ahead of the modules, so that the grammar
+/// modules' own tests can run individual rules with it.
+#[cfg(test)]
+macro_rules! run {
+    ($input:expr, $parser:expr) => {{
+        let input: &str = $input;
+        let tokens = $crate::lexer::lex(input);
+        ::chumsky::Parser::parse(
+            &::chumsky::Parser::then_ignore($parser, ::chumsky::prelude::end()),
+            $crate::common::token_stream(input, &tokens),
+        )
+        .into_result()
+        .ok()
+    }};
+}
+
 // ===== Common Parsing Module =====
 
 /// Common parsing utilities shared across language implementations.
@@ -971,6 +992,14 @@ pub mod common {
     ///
     /// A single-word `target` is simply [`word_ci`], so this is always the safe
     /// choice when the phrase is built from a table of keywords.
+    ///
+    /// # Panics
+    ///
+    /// Panics, when the parser is built rather than when it runs, if `target`
+    /// is empty: it lexes to no tokens, so there is nothing to match. (Unlike
+    /// [`word_ci`]`("")`, which builds a parser that simply never matches.) A
+    /// whitespace-only `target` is not empty; it lexes to one
+    /// [`Token::Space`].
     pub fn phrase_ci<'t, 's: 't, I>(
         target: &'static str,
     ) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
@@ -981,6 +1010,11 @@ pub mod common {
     }
 
     /// Case-sensitive counterpart of [`phrase_ci`].
+    ///
+    /// # Panics
+    ///
+    /// Panics, when the parser is built, if `target` is empty, exactly like
+    /// [`phrase_ci`].
     pub fn phrase_cs<'t, 's: 't, I>(
         target: &'static str,
     ) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
@@ -1002,7 +1036,8 @@ pub mod common {
     ///
     /// # Panics
     ///
-    /// Panics if `pairs` is empty.
+    /// Panics, when the parser is built, if `pairs` is empty or if any phrase
+    /// in it is empty (see [`phrase_ci`]).
     pub fn phrases_ci<'t, 's: 't, I, T>(
         pairs: impl IntoIterator<Item = (&'static str, T)>,
     ) -> impl Parser<'t, I, T, ParserError<'t, 's>> + Clone
@@ -1017,7 +1052,8 @@ pub mod common {
     ///
     /// # Panics
     ///
-    /// Panics if `pairs` is empty.
+    /// Panics, when the parser is built, if `pairs` is empty or if any phrase
+    /// in it is empty (see [`phrase_ci`]).
     pub fn phrases_cs<'t, 's: 't, I, T>(
         pairs: impl IntoIterator<Item = (&'static str, T)>,
     ) -> impl Parser<'t, I, T, ParserError<'t, 's>> + Clone
@@ -1304,24 +1340,6 @@ pub mod common {
     mod tests {
         use super::*;
 
-        /// Lex `$input`, run `$parser` over the whole of it, and yield
-        /// `Option<Output>`.
-        ///
-        /// A macro rather than a function because the input type
-        /// [`token_stream`] returns is opaque, so a caller cannot name it in a
-        /// `where` clause.
-        macro_rules! run {
-            ($input:expr, $parser:expr) => {{
-                let input: &str = $input;
-                let tokens = lex(input);
-                $parser
-                    .then_ignore(end())
-                    .parse(token_stream(input, &tokens))
-                    .into_result()
-                    .ok()
-            }};
-        }
-
         #[test]
         fn word_ci_matches_whole_words_only() {
             assert!(run!("day", word_ci("day")).is_some());
@@ -1427,12 +1445,24 @@ pub mod common {
             assert!(run!("2024-01-15T25:00", iso_datetime()).is_none());
         }
 
-        /// The shadowing hazard the grammar is left-factored to avoid: a bare
-        /// `tomorrow` listed first under `choice` commits, strands `morning`,
-        /// and the enclosing `end()` then fails. Factoring the shared prefix
-        /// and making the tail optional is what removes it.
-        fn day_then_optional_part<'t, 's: 't, I>()
-        -> impl Parser<'t, I, i64, ParserError<'t, 's>> + Clone
+        /// `tomorrow` and `tomorrow morning` as sibling alternatives, the
+        /// shorter first — the shape left-factoring replaces.
+        fn unfactored_day<'t, 's: 't, I>() -> impl Parser<'t, I, i64, ParserError<'t, 's>> + Clone
+        where
+            I: TokenInput<'t, 's>,
+        {
+            choice((
+                word_ci("tomorrow").to(1),
+                word_ci("tomorrow")
+                    .then(space())
+                    .then(word_ci("morning"))
+                    .to(2),
+            ))
+        }
+
+        /// The same two readings, left-factored: the shared prefix once, the
+        /// rest as an optional tail.
+        fn factored_day<'t, 's: 't, I>() -> impl Parser<'t, I, i64, ParserError<'t, 's>> + Clone
         where
             I: TokenInput<'t, 's>,
         {
@@ -1441,10 +1471,59 @@ pub mod common {
                 .map(|morning| if morning.is_some() { 2 } else { 1 })
         }
 
+        /// Why the grammar is left-factored at all: `choice` commits to the
+        /// first alternative that succeeds, so the bare `tomorrow` wins,
+        /// strands `morning`, and `end()` rejects the input. This pins the
+        /// chumsky behaviour on a toy pair; the real left-factored rules are
+        /// pinned by the tests in `language::english` and `language::german`,
+        /// which fail if any of those rules is un-factored.
         #[test]
-        fn left_factoring_removes_the_shadowing() {
-            assert_eq!(run!("tomorrow morning", day_then_optional_part()), Some(2));
-            assert_eq!(run!("tomorrow", day_then_optional_part()), Some(1));
+        fn choice_commits_to_the_first_success_so_shared_prefixes_are_factored() {
+            assert_eq!(run!("tomorrow", unfactored_day()), Some(1));
+            assert_eq!(
+                run!("tomorrow morning", unfactored_day()),
+                None,
+                "the shorter sibling shadows the longer one"
+            );
+
+            assert_eq!(run!("tomorrow", factored_day()), Some(1));
+            assert_eq!(run!("tomorrow morning", factored_day()), Some(2));
+        }
+
+        #[test]
+        #[should_panic(expected = "phrase must be non-empty")]
+        fn phrase_ci_panics_on_an_empty_phrase() {
+            let _ = run!("now", phrase_ci(""));
+        }
+
+        #[test]
+        #[should_panic(expected = "phrase must be non-empty")]
+        fn phrase_cs_panics_on_an_empty_phrase() {
+            let _ = run!("now", phrase_cs(""));
+        }
+
+        #[test]
+        #[should_panic(expected = "phrase must be non-empty")]
+        fn phrases_ci_panics_on_an_empty_entry() {
+            let _ = run!("now", phrases_ci([("now", 1i64), ("", 2)]));
+        }
+
+        #[test]
+        #[should_panic(expected = "phrase must be non-empty")]
+        fn phrases_cs_panics_on_an_empty_entry() {
+            let _ = run!("now", phrases_cs([("now", 1i64), ("", 2)]));
+        }
+
+        #[test]
+        #[should_panic(expected = "phrase set must be non-empty")]
+        fn phrases_ci_panics_on_an_empty_table() {
+            let _ = run!("now", phrases_ci(Vec::<(&'static str, i64)>::new()));
+        }
+
+        /// A whitespace-only phrase is not empty: it lexes to one `Space`.
+        #[test]
+        fn a_whitespace_phrase_is_not_an_empty_one() {
+            assert!(run!(" ", phrase_ci(" ")).is_some());
         }
     }
 }
