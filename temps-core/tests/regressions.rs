@@ -345,6 +345,119 @@ fn parse_error_position_is_a_character_index_not_a_byte_offset() {
     assert_eq!(position, Some(char_index));
 }
 
+// ===== Diagnostic size =====
+
+/// The start of `input`, for a panic message that must not carry a megabyte
+/// of it.
+fn head(input: &str) -> String {
+    input.chars().take(24).collect()
+}
+
+/// The report used to echo the whole failing line, underline every character
+/// of the failing token and quote that token again, so its message was up to
+/// seven times the size of a one-line input. A long line is now cut down to the
+/// stretch around the error and a long token is quoted only in part; the full
+/// input is still in the error's `input` field.
+#[test]
+fn a_diagnostic_does_not_grow_with_its_input() {
+    const ONE_MIB: usize = 1 << 20;
+    // Comfortably above the longest report a short input gets (the English
+    // list of expected expressions is most of it), far below any echo.
+    const MAX_MESSAGE_BYTES: usize = 2048;
+
+    let inputs = [
+        "x".repeat(ONE_MIB),
+        "ä".repeat(ONE_MIB / 2),
+        "!".repeat(ONE_MIB),
+        format!("in {} days", "9".repeat(ONE_MIB)),
+        format!("tomorrow{}x", " ".repeat(ONE_MIB)),
+        format!("12:  \n  {}30", "x".repeat(ONE_MIB)),
+        format!("{}\nin 5 {}", "y".repeat(ONE_MIB), "z".repeat(ONE_MIB)),
+    ];
+
+    for lang in [Language::English, Language::German] {
+        for input in &inputs {
+            match parse(input, lang) {
+                Err(TempsError::ParseError {
+                    message,
+                    input: echoed,
+                    ..
+                }) => {
+                    assert!(
+                        message.len() <= MAX_MESSAGE_BYTES,
+                        "{lang:?} {:?}…: a {} byte input got a {} byte message",
+                        head(input),
+                        input.len(),
+                        message.len()
+                    );
+                    assert!(echoed == *input, "the error must keep the whole input");
+                }
+                Err(other) => panic!("{lang:?} {:?}…: not a parse error: {other}", head(input)),
+                Ok(_) => panic!("{lang:?} {:?}… parsed", head(input)),
+            }
+        }
+    }
+}
+
+/// Cutting a long line down must not cut through a multi-byte character, and
+/// the underline must still start under the offending token, with the header
+/// naming its line and column in the *original* input.
+#[test]
+fn a_cut_down_line_still_points_at_the_offending_token() {
+    // U+00A0 is whitespace to the lexer, two bytes long and one column wide.
+    let nbsp = "\u{a0}".repeat(500);
+    let cases = [
+        // (input, the offending token's first characters, its line:column)
+        (format!("in{nbsp}5 blargs"), "blargs", "1:505"),
+        (format!("in\n{nbsp}5 blargs"), "blargs", "2:503"),
+        (format!("in 5 {}", "ö".repeat(100_000)), "ööö", "1:6"),
+        (format!("in{nbsp}5 {}", "ü".repeat(100_000)), "üüü", "1:505"),
+    ];
+
+    for (input, needle, location) in &cases {
+        let (message, position) = parse_error(input, Language::English);
+
+        assert_eq!(position, Some(char_index_of(input, needle)), "{message}");
+        assert!(message.len() <= 2048, "{} bytes:\n{message}", message.len());
+        assert!(message.contains('…'), "the cut must be marked:\n{message}");
+        assert!(
+            message.contains(&format!("input:{location}")),
+            "the header must name {location}:\n{message}"
+        );
+
+        // The source row is the first to show the token; the underline row
+        // follows it, and both carry the same gutter.
+        let lines: Vec<&str> = message.lines().collect();
+        let row = lines
+            .iter()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("no source row:\n{message}"));
+        let token_column = char_index_of(lines[row], needle);
+        let underline = lines[row + 1]
+            .chars()
+            .position(|c| c == '─' || c == '┬')
+            .unwrap_or_else(|| panic!("no underline:\n{message}"));
+        assert_eq!(
+            underline, token_column,
+            "the underline starts in column {underline}, the token in {token_column}:\n{message}"
+        );
+    }
+}
+
+/// A long token is quoted up to a fixed length and marked as cut.
+#[test]
+fn a_long_token_is_quoted_only_in_part() {
+    let (message, _) = parse_error(&format!("in 5 {}", "ö".repeat(1000)), Language::English);
+    assert!(
+        message.contains(&format!("found `{}…`", "ö".repeat(32))),
+        "{message}"
+    );
+
+    // A token that fits is quoted whole.
+    let (message, _) = parse_error("in 5 blargs", Language::English);
+    assert!(message.contains("found `blargs`"), "{message}");
+}
+
 // ===== Tokenizer guarantees =====
 
 /// The parsers used to run over characters, so `word_ci("day")` matched the
