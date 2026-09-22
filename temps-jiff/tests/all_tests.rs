@@ -357,8 +357,10 @@ fn assert_says_what_failed(input: &str, error: &TempsError, site: &str) {
 fn arithmetic_beyond_the_calendar_says_what_failed() {
     // Every out-of-range message site gets a case, so none of them can fall
     // back to the tautological "Date calculation error: Date calculation error".
+    // "later today" resolves at the upper edge; its one reachable failure is
+    // covered by
+    // later_today_fails_rather_than_leave_today_when_the_last_instant_reads_as_yesterday.
     let provider = JiffProvider::at(utc(2024, 3, 15, 10, 30));
-    let late_on_the_last_day = JiffProvider::at(utc(9999, 12, 30, 21, 0));
     let midday_on_the_last_day = JiffProvider::at(utc(9999, 12, 30, 12, 0));
     let near_the_start = JiffProvider::at(just_after_timestamp_min(30, TimeZone::UTC));
     // 300 ms short of a day after `Timestamp::MIN` (`-009999-01-02T01:59:59Z`).
@@ -381,12 +383,6 @@ fn arithmetic_beyond_the_calendar_says_what_failed() {
             "1 day ago",
             Language::English,
             RELATIVE,
-        ),
-        (
-            &late_on_the_last_day,
-            "later today",
-            Language::English,
-            "Two hours from now",
         ),
         (
             &near_the_start,
@@ -423,23 +419,90 @@ fn arithmetic_beyond_the_calendar_says_what_failed() {
     }
 }
 
+/// The start of the day after `now`'s local date, as jiff resolves it.
+fn start_of_tomorrow(now: &Zoned) -> std::result::Result<Zoned, jiff::Error> {
+    now.date()
+        .tomorrow()?
+        .at(0, 0, 0, 0)
+        .to_zoned(now.time_zone().clone())
+}
+
+/// jiff cannot represent the start of the day after its last one, but that is
+/// no reason to fail while two hours on is still today: nothing needs
+/// clamping.
 #[test]
-fn later_today_at_the_upper_edge_resolves_two_hours_on_or_says_what_failed() {
-    // Two hours on is representable here, but tomorrow's midnight is not: in
-    // UTC its instant is past `Timestamp::MAX`, and in Tokyo the civil date
-    // 10000-01-01 does not exist. Resolving to two hours on would be right.
-    // Until that is fixed, the failure must at least say what went wrong.
+fn later_today_on_the_last_representable_day_is_two_hours_on() {
+    // In UTC and New York tomorrow's midnight is past `Timestamp::MAX`; in
+    // Tokyo the civil date 10000-01-01 does not exist.
     for now in [
+        utc(9999, 12, 30, 0, 30),
         utc(9999, 12, 30, 12, 0),
+        utc(9999, 12, 30, 19, 59),
+        at_zone("America/New_York", 9999, 12, 30, 12, 0),
         at_zone("Asia/Tokyo", 9999, 12, 31, 5, 0),
     ] {
+        assert!(
+            start_of_tomorrow(&now).is_err(),
+            "tomorrow is representable from {now}, so this does not test the edge"
+        );
+        let two_hours_on = now.checked_add(Span::new().hours(2)).unwrap();
+        assert_eq!(two_hours_on.date(), now.date(), "premise from {now}");
+
         let provider = JiffProvider::at(now.clone());
-        let expr = parse("later today", Language::English).unwrap();
-        match provider.parse_expression(expr) {
-            Ok(later) => assert_eq!(later, now.checked_add(Span::new().hours(2)).unwrap()),
-            Err(error) => assert_says_what_failed("later today", &error, "The start of tomorrow"),
-        }
+        let later = resolve(&provider, "later today", Language::English);
+        assert_eq!(later, two_hours_on, "later today from {now}");
+        assert_eq!(later.offset(), two_hours_on.offset(), "{now}");
     }
+}
+
+/// When two hours on is past `Timestamp::MAX`, today ends where jiff's range
+/// does, so "later today" stops at the last instant jiff can represent.
+#[test]
+fn later_today_within_two_hours_of_the_last_instant_stops_at_it() {
+    for now in [
+        utc(9999, 12, 30, 21, 0),
+        utc(9999, 12, 30, 22, 0),
+        jiff::Timestamp::MAX.to_zoned(TimeZone::UTC),
+        at_zone("America/New_York", 9999, 12, 30, 16, 30),
+        at_zone("Asia/Tokyo", 9999, 12, 31, 6, 0),
+    ] {
+        assert!(
+            now.checked_add(Span::new().hours(2)).is_err(),
+            "two hours after {now} is representable, so nothing is clamped"
+        );
+
+        let provider = JiffProvider::at(now.clone());
+        let later = resolve(&provider, "later today", Language::English);
+        assert_eq!(later.timestamp(), jiff::Timestamp::MAX, "from {now}");
+        assert_eq!(later.date(), now.date(), "from {now}");
+        assert!(later >= now, "from {now}");
+    }
+}
+
+/// The last instant jiff can represent can read as an earlier date than
+/// `now` only where the clocks go back across midnight. "later today" then
+/// has no end of today to stop at and says so, rather than landing on
+/// another date.
+#[test]
+fn later_today_fails_rather_than_leave_today_when_the_last_instant_reads_as_yesterday() {
+    // UTC-21:15 in summer, UTC-22:15 in winter. Summer time ends at 00:30 on
+    // 30 December (J364), when the clocks go back to 23:30 on the 29th.
+    let zone = TimeZone::posix("XST22:15XDT21:15,J1/0,J364/0:30").unwrap();
+    // 00:15 summer time on 9999-12-30, a quarter of an hour before the clocks
+    // go back. `Timestamp::MAX` comes 30 minutes later, at 23:45:00.999999999
+    // winter time on the 29th.
+    let now = utc(9999, 12, 30, 21, 30).with_time_zone(zone.clone());
+    assert_eq!(now.date(), date(9999, 12, 30), "premise");
+    assert_eq!(
+        jiff::Timestamp::MAX.to_zoned(zone).date(),
+        date(9999, 12, 29),
+        "premise"
+    );
+
+    let error = JiffProvider::at(now)
+        .parse_expression(TimeExpression::LaterToday)
+        .expect_err("the last instant reads as yesterday, so today has no end to stop at");
+    assert_says_what_failed("later today", &error, "The start of tomorrow");
 }
 
 // ===== Range limits =====

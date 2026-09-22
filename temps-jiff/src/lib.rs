@@ -78,9 +78,19 @@ use temps_core::{
 /// A date-only expression resolves to local midnight, so `9999-12-31` fails in
 /// UTC but succeeds in `Asia/Tokyo`. Past that point, absolute expressions and
 /// bare times of day (`22:30`) fail with `TempsError::BackendError`. Relative
-/// expressions (`in 1 day` from `9999-12-30T12:00`, say), day references with
-/// or without a time (`tomorrow`, `tomorrow at 10:00`, `tonight`) and
-/// `later today` fail with `TempsError::DateCalculationError`.
+/// expressions (`in 1 day` from `9999-12-30T12:00`, say) and day references
+/// with or without a time (`tomorrow`, `tomorrow at 10:00`, `tonight`) fail
+/// with `TempsError::DateCalculationError`.
+///
+/// `later today` resolves at the upper edge, too. On a day whose next midnight
+/// jiff cannot represent (all of `9999-12-30` in UTC, `9999-12-31` in
+/// `Asia/Tokyo`), it resolves to two hours on while that is in range and
+/// otherwise stops at `jiff::Timestamp::MAX`: pinned at `9999-12-30T12:00Z` it
+/// resolves to `9999-12-30T14:00Z`, and pinned at `9999-12-30T21:00Z` to
+/// `9999-12-30T22:00:00.999999999Z`. It fails, with
+/// `TempsError::DateCalculationError`, only in a zone whose clocks go back
+/// across midnight shortly before `Timestamp::MAX`, so that the last instant
+/// reads as an earlier date than the clock and today has no end to stop at.
 ///
 /// **Lower edge.** The first accepted local datetime is `-009999-01-02T01:59:59`
 /// in UTC, `-009999-01-01T20:59:59` at `-05:00` and `-009999-01-02T10:59:59` at
@@ -215,7 +225,6 @@ fn jiff_time_components(
 // explanation travels alongside as the error's context.
 const ERR_RELATIVE_OUT_OF_RANGE: &str =
     "Relative amount moves the date outside the supported range";
-const ERR_LATER_TODAY_OUT_OF_RANGE: &str = "Two hours from now is outside the supported range";
 const ERR_TOMORROW_START_OUT_OF_RANGE: &str =
     "The start of tomorrow is outside the supported range";
 const ERR_TODAY_END_OUT_OF_RANGE: &str = "The last instant of today is outside the supported range";
@@ -532,45 +541,49 @@ impl TimeParser for JiffProvider {
             }
             TimeExpression::LaterToday => {
                 let now = self.now();
-                let later = now.checked_add(Span::new().hours(2)).map_err(|e| {
-                    TempsError::date_calculation_with_source(
-                        ERR_LATER_TODAY_OUT_OF_RANGE,
-                        e.to_string(),
-                    )
-                })?;
+                // `None` when two hours on is past `Timestamp::MAX`; the clamp
+                // below then applies.
+                let later = now.checked_add(Span::new().hours(2)).ok();
+
                 // Clamp against the true end of the local day rather than a fixed
                 // 23:59:59, which need not exist and would drop sub-second precision.
                 let tomorrow_start = now
                     .date()
                     .tomorrow()
-                    .map_err(|e| {
-                        TempsError::date_calculation_with_source(
-                            ERR_TOMORROW_START_OUT_OF_RANGE,
-                            e.to_string(),
-                        )
-                    })?
-                    .at(0, 0, 0, 0)
-                    .to_zoned(now.time_zone().clone())
-                    .map_err(|e| {
-                        TempsError::date_calculation_with_source(
-                            ERR_TOMORROW_START_OUT_OF_RANGE,
-                            e.to_string(),
-                        )
-                    })?;
+                    .and_then(|tomorrow| tomorrow.at(0, 0, 0, 0).to_zoned(now.time_zone().clone()));
+                let last_today = match tomorrow_start {
+                    Ok(tomorrow_start) => tomorrow_start
+                        .checked_sub(Span::new().nanoseconds(1))
+                        .map_err(|e| {
+                            TempsError::date_calculation_with_source(
+                                ERR_TODAY_END_OUT_OF_RANGE,
+                                e.to_string(),
+                            )
+                        })?,
+                    // jiff cannot represent the start of tomorrow, either its
+                    // civil date or its instant, so today ends with jiff's range.
+                    Err(e) => {
+                        let last_instant = jiff::Timestamp::MAX.to_zoned(now.time_zone().clone());
+                        // Only a zone whose clocks go back across midnight can
+                        // read that instant as another date than `now`.
+                        if last_instant.date() != now.date() {
+                            return Err(TempsError::date_calculation_with_source(
+                                ERR_TOMORROW_START_OUT_OF_RANGE,
+                                e.to_string(),
+                            ));
+                        }
+                        last_instant
+                    }
+                };
 
-                if later < tomorrow_start {
-                    return Ok(later);
-                }
-                let last_today = tomorrow_start
-                    .checked_sub(Span::new().nanoseconds(1))
-                    .map_err(|e| {
-                        TempsError::date_calculation_with_source(
-                            ERR_TODAY_END_OUT_OF_RANGE,
-                            e.to_string(),
-                        )
-                    })?;
+                // Compare instants, not dates: whether `later` is still today
+                // is whether it comes before the end of today.
+                let clamped = match later {
+                    Some(later) => later.min(last_today),
+                    None => last_today,
+                };
                 // Never resolve into the past.
-                Ok(if last_today < now { now } else { last_today })
+                Ok(clamped.max(now))
             }
             TimeExpression::Date(date) => {
                 use jiff::civil::Date;
