@@ -38,7 +38,9 @@ pub enum Token<'a> {
     Word(&'a str),
     /// A maximal run of ASCII digits, kept as text to preserve width.
     Number(&'a str),
-    /// A single non-alphanumeric, non-whitespace character.
+    /// A single character that is not alphabetic, an ASCII digit or
+    /// whitespace, and does not continue a [`Token::Word`]: a combining mark
+    /// is a `Punct` only when no letter comes before it.
     Punct(char),
     /// A run of whitespace.
     ///

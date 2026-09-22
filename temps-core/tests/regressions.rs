@@ -656,8 +656,10 @@ fn whitespace_separates_a_number_from_its_unit() {
 /// A clock minute or second, and every ISO 8601 field, is written with two
 /// digits. They used to share the one-or-two-digit helper a clock hour needs,
 /// so `10:5` quietly read as 10:05 (when 10:50 may have been meant) and
-/// `2024-1-5` passed as ISO 8601, which jiff and chrono both reject. Each row
-/// pairs a short field with its two-digit spelling, which must still parse.
+/// `2024-1-5` passed as ISO 8601, although ISO 8601 and RFC 3339 fix every
+/// field's width and jiff's parser rejects the short form. (chrono's lenient
+/// `NaiveDate` parser accepts it, so it is no guide here.) Each row pairs a
+/// short field with its two-digit spelling, which must still parse.
 #[test]
 fn fixed_width_fields_need_both_digits() {
     let clock_times = [

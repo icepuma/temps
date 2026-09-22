@@ -86,8 +86,14 @@ pub enum TimeExpression {
     /// A day with a specific time (e.g., "tomorrow at 3:30 pm")
     DayTime(DayTime),
     /// A short way into the future, clamped so it cannot leave today
-    /// (e.g., "later today"). Resolves to `now + 2h`, or the last second of
-    /// today if that would cross midnight.
+    /// (e.g., "later today").
+    ///
+    /// Resolves to `now + 2h`, clamped to the last instant of the local day:
+    /// one nanosecond before the next local day begins, `23:59:59.999999999` on
+    /// an ordinary day. It is never earlier than now. At the end of the
+    /// backend's range, where the next local day cannot be represented,
+    /// `ChronoProvider` clamps to the last instant it can represent instead,
+    /// while `JiffProvider` fails with a `DateCalculationError`.
     LaterToday,
 }
 
@@ -911,8 +917,12 @@ pub mod common {
 
     /// Match a single punctuation character, e.g. `punct(':')`.
     ///
-    /// The lexer emits every non-alphanumeric, non-whitespace character as its
-    /// own [`Token::Punct`], so this is the token-level `just(':')`.
+    /// The lexer emits every character that is not alphabetic, an ASCII digit
+    /// or whitespace as its own [`Token::Punct`], so this is the token-level
+    /// `just(':')`. The exception is a combining mark that continues a word,
+    /// such as the U+0308 of a decomposed `u\u{308}`: it stays inside that
+    /// [`Token::Word`] and never reaches `punct`. A mark with no letter before
+    /// it is a `Punct` like any other.
     pub fn punct<'t, 's: 't, I>(c: char) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
     where
         I: TokenInput<'t, 's>,
