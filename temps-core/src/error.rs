@@ -716,8 +716,9 @@ mod tests {
         }
     }
 
-    /// The lexer's spans are byte offsets, ariadne indexes characters. An
-    /// umlaut before the error site is what tells the two apart.
+    /// The lexer's spans are byte offsets, ariadne indexes characters. A
+    /// multi-byte character *before* the error site is what tells the two
+    /// apart: here the error is at byte 5 but at character 4.
     #[test]
     fn parse_error_position_is_a_character_offset() {
         use crate::common::{ParserError, TokenInput, space, token_stream, word_ci};
@@ -728,13 +729,14 @@ mod tests {
         where
             I: TokenInput<'t, 's>,
         {
-            word_ci("in")
+            word_ci("für")
                 .then_ignore(space())
                 .then_ignore(word_ci("zwei"))
                 .ignored()
         }
 
-        let input = "in fünf";
+        let input = "für fünf";
+        assert_eq!(input.find("fünf"), Some(5), "the byte offset");
         let tokens = lex(input);
         let errors = expects_zwei()
             .then_ignore(end())
@@ -746,11 +748,22 @@ mod tests {
             TempsError::ParseError {
                 message, position, ..
             } => {
-                // Byte offset 3, and character offset 3 too — but the label
-                // ariadne draws spans `fünf`, which is 5 bytes and 4 chars.
-                assert_eq!(position, Some(3));
-                assert!(message.contains("fünf"), "{message}");
-                assert!(message.contains("zwei"), "{message}");
+                assert_eq!(position, Some(4), "{message}");
+                assert!(message.contains("input:1:5"), "{message}");
+
+                // The underline starts in the same column as `fünf` does in
+                // the echoed line above it (both rows share the gutter).
+                let lines: Vec<&str> = message.lines().collect();
+                let row = lines
+                    .iter()
+                    .position(|line| line.ends_with(input))
+                    .unwrap_or_else(|| panic!("no source row:\n{message}"));
+                let token = lines[row].chars().count() - "fünf".chars().count();
+                let underline = lines[row + 1]
+                    .chars()
+                    .position(|c| c == '─' || c == '┬')
+                    .unwrap_or_else(|| panic!("no underline:\n{message}"));
+                assert_eq!(underline, token, "{message}");
             }
             other => panic!("expected a parse error, got {other:?}"),
         }
