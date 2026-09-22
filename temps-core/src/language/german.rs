@@ -4,10 +4,11 @@ use crate::{
     DayReference, DayTime, Direction, LanguageParser, RelativeTime, Result, StandardDate, Time,
     TimeExpression, TimeUnit, Weekday, WeekdayModifier,
     common::{
-        ParserError, TokenInput, digit_number, four_digit_number, iso_datetime, opt_space,
-        phrases_ci, phrases_cs, punct, space, token_stream, two_digit_number, word_ci,
+        ParserError, TokenInput, digit_number, exactly_two_digit_number, four_digit_number,
+        iso_datetime, opt_space, phrases_ci, phrases_cs, punct, space, token_stream,
+        two_digit_number, word_ci,
     },
-    error::rich_errors_to_temps_error,
+    error::rich_errors_to_temps_error_with_empty_hint,
     lexer::lex,
     time_utils,
 };
@@ -16,7 +17,9 @@ use crate::{
 ///
 /// German nouns (e.g., "Sekunden", "Minuten") are matched case-sensitively
 /// to follow German orthographic rules, while abbreviations (e.g., "sek", "min")
-/// are matched case-insensitively for convenience.
+/// are matched case-insensitively for convenience. A noun in the wrong case
+/// (`montag`, `MINUTEN`) is still rejected, but with a hint naming the
+/// correctly capitalised spelling instead of the error an unknown word gets.
 pub struct GermanParser;
 
 fn number<'t, 's: 't, I>() -> impl Parser<'t, I, i64, ParserError<'t, 's>> + Clone
@@ -45,36 +48,82 @@ where
     .labelled("Zahl")
 }
 
+/// The unit nouns, capitalised as German writes them.
+const UNIT_NOUNS: [(&str, TimeUnit); 17] = [
+    ("Sekunde", TimeUnit::Second),
+    ("Sekunden", TimeUnit::Second),
+    ("Minute", TimeUnit::Minute),
+    ("Minuten", TimeUnit::Minute),
+    ("Stunde", TimeUnit::Hour),
+    ("Stunden", TimeUnit::Hour),
+    ("Tag", TimeUnit::Day),
+    ("Tage", TimeUnit::Day),
+    ("Tagen", TimeUnit::Day),
+    ("Woche", TimeUnit::Week),
+    ("Wochen", TimeUnit::Week),
+    ("Monat", TimeUnit::Month),
+    ("Monate", TimeUnit::Month),
+    ("Monaten", TimeUnit::Month),
+    ("Jahr", TimeUnit::Year),
+    ("Jahre", TimeUnit::Year),
+    ("Jahren", TimeUnit::Year),
+];
+
+/// The weekday nouns, capitalised as German writes them.
+const WEEKDAY_NOUNS: [(&str, Weekday); 7] = [
+    ("Montag", Weekday::Monday),
+    ("Dienstag", Weekday::Tuesday),
+    ("Mittwoch", Weekday::Wednesday),
+    ("Donnerstag", Weekday::Thursday),
+    ("Freitag", Weekday::Friday),
+    ("Samstag", Weekday::Saturday),
+    ("Sonntag", Weekday::Sunday),
+];
+
+/// Recognise one of `nouns` written in the wrong case — `montag`, `MINUTEN` —
+/// only to reject it with a hint naming the correct spelling.
+///
+/// The noun tables match case-sensitively, so without this a miscased noun
+/// got the same "expected Wochentag, found `montag`" a nonsense word gets.
+/// It must come after the case-sensitive table in a `choice`, which then
+/// claims every correctly cased noun first.
+///
+/// The hint is emitted through `validate`, which records a secondary error
+/// but lets the parse carry on: any emitted error still fails the parse as a
+/// whole, so this accepts nothing new, but the message survives. A `try_map`
+/// failure would be a primary error instead, and the enclosing category
+/// `.labelled(...)` would replace it with just the category name.
+fn miscased_noun<'t, 's: 't, I, T, const N: usize>(
+    nouns: [(&'static str, T); N],
+) -> impl Parser<'t, I, T, ParserError<'t, 's>> + Clone
+where
+    I: TokenInput<'t, 's>,
+    T: Clone + 't,
+{
+    phrases_ci(nouns.map(|(noun, value)| (noun, (value, noun)))).validate(
+        |(value, noun), extra, emitter| {
+            emitter.emit(Rich::custom(
+                extra.span(),
+                format!("German nouns are capitalised; write `{noun}`"),
+            ));
+            value
+        },
+    )
+}
+
 fn time_unit<'t, 's: 't, I>() -> impl Parser<'t, I, TimeUnit, ParserError<'t, 's>> + Clone
 where
     I: TokenInput<'t, 's>,
 {
     choice((
         // Nouns keep their capitalisation; abbreviations stay case-insensitive.
-        phrases_cs([
-            ("Sekunde", TimeUnit::Second),
-            ("Sekunden", TimeUnit::Second),
-            ("Minute", TimeUnit::Minute),
-            ("Minuten", TimeUnit::Minute),
-            ("Stunde", TimeUnit::Hour),
-            ("Stunden", TimeUnit::Hour),
-            ("Tag", TimeUnit::Day),
-            ("Tage", TimeUnit::Day),
-            ("Tagen", TimeUnit::Day),
-            ("Woche", TimeUnit::Week),
-            ("Wochen", TimeUnit::Week),
-            ("Monat", TimeUnit::Month),
-            ("Monate", TimeUnit::Month),
-            ("Monaten", TimeUnit::Month),
-            ("Jahr", TimeUnit::Year),
-            ("Jahre", TimeUnit::Year),
-            ("Jahren", TimeUnit::Year),
-        ]),
+        phrases_cs(UNIT_NOUNS),
         phrases_ci([
             ("sek", TimeUnit::Second),
             ("min", TimeUnit::Minute),
             ("std", TimeUnit::Hour),
         ]),
+        miscased_noun(UNIT_NOUNS),
     ))
     .labelled("Zeiteinheit")
 }
@@ -84,15 +133,7 @@ where
     I: TokenInput<'t, 's>,
 {
     choice((
-        phrases_cs([
-            ("Montag", Weekday::Monday),
-            ("Dienstag", Weekday::Tuesday),
-            ("Mittwoch", Weekday::Wednesday),
-            ("Donnerstag", Weekday::Thursday),
-            ("Freitag", Weekday::Friday),
-            ("Samstag", Weekday::Saturday),
-            ("Sonntag", Weekday::Sunday),
-        ]),
+        phrases_cs(WEEKDAY_NOUNS),
         phrases_ci([
             ("mo", Weekday::Monday),
             ("di", Weekday::Tuesday),
@@ -102,6 +143,7 @@ where
             ("sa", Weekday::Saturday),
             ("so", Weekday::Sunday),
         ]),
+        miscased_noun(WEEKDAY_NOUNS),
     ))
     .labelled("Wochentag")
 }
@@ -177,10 +219,12 @@ fn time_digits<'t, 's: 't, I>() -> impl Parser<'t, I, (u8, u8, u8), ParserError<
 where
     I: TokenInput<'t, 's>,
 {
+    // The hour may drop its leading zero (`9:45 Uhr`); the minute and second
+    // are fixed-width, so `14:5` is rejected rather than guessed at.
     two_digit_number()
         .then_ignore(punct(':'))
-        .then(two_digit_number())
-        .then(punct(':').ignore_then(two_digit_number()).or_not())
+        .then(exactly_two_digit_number())
+        .then(punct(':').ignore_then(exactly_two_digit_number()).or_not())
         .try_map(|((hour, minute), second), span| {
             let second = second.unwrap_or(0);
             if time_utils::is_valid_24_hour_time(hour, minute, second) {
@@ -330,12 +374,19 @@ where
     .then_ignore(end())
 }
 
+/// What empty (or whitespace-only) input is told to try instead; every
+/// backticked example must parse in German, which a regression test checks.
+const EMPTY_INPUT_HINT: &str = "Eingabe ist leer; erwartet wird ein Zeitausdruck wie `jetzt`, \
+                                `in 5 Minuten` oder ein ISO-Datum";
+
 impl LanguageParser for GermanParser {
     fn parse(&self, input: &str) -> Result<TimeExpression> {
         let tokens = lex(input);
         parser()
             .parse(token_stream(input, &tokens))
             .into_result()
-            .map_err(|errs| rich_errors_to_temps_error(input, errs))
+            .map_err(|errs| {
+                rich_errors_to_temps_error_with_empty_hint(input, errs, EMPTY_INPUT_HINT)
+            })
     }
 }

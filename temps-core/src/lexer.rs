@@ -28,6 +28,13 @@ use chumsky::span::SimpleSpan;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Token<'a> {
     /// A maximal run of alphabetic characters, e.g. `tomorrow`, `übermorgen`.
+    ///
+    /// A combining diacritical mark (U+0300..=U+036F and the other Combining
+    /// Diacritical Marks blocks) continues the run it follows, so a decomposed
+    /// (NFD) `u\u{308}bermorgen` — `u` then U+0308 COMBINING DIAERESIS — is one
+    /// word, just like its precomposed (NFC) spelling. The slice is the input
+    /// exactly as written; keyword matching composes the German umlauts itself
+    /// (see [`word_ci`](crate::common::word_ci)).
     Word(&'a str),
     /// A maximal run of ASCII digits, kept as text to preserve width.
     Number(&'a str),
@@ -61,15 +68,7 @@ pub fn lex(input: &str) -> Vec<(Token<'_>, SimpleSpan)> {
     let mut chars = input.char_indices().peekable();
 
     while let Some(&(start, c)) = chars.peek() {
-        let kind = if c.is_whitespace() {
-            CharKind::Space
-        } else if c.is_alphabetic() {
-            CharKind::Word
-        } else if c.is_ascii_digit() {
-            CharKind::Number
-        } else {
-            CharKind::Punct
-        };
+        let kind = char_kind(c);
 
         if kind == CharKind::Punct {
             chars.next();
@@ -81,16 +80,9 @@ pub fn lex(input: &str) -> Vec<(Token<'_>, SimpleSpan)> {
         // Consume the whole run so a word is never matched piecemeal.
         let mut end = start;
         while let Some(&(offset, next)) = chars.peek() {
-            let next_kind = if next.is_whitespace() {
-                CharKind::Space
-            } else if next.is_alphabetic() {
-                CharKind::Word
-            } else if next.is_ascii_digit() {
-                CharKind::Number
-            } else {
-                CharKind::Punct
-            };
-            if next_kind != kind {
+            let continues =
+                char_kind(next) == kind || (kind == CharKind::Word && is_combining_mark(next));
+            if !continues {
                 break;
             }
             end = offset + next.len_utf8();
@@ -110,12 +102,53 @@ pub fn lex(input: &str) -> Vec<(Token<'_>, SimpleSpan)> {
     tokens
 }
 
+/// Whether `input` holds nothing but whitespace, i.e. lexes to no tokens at
+/// all or to a single [`Token::Space`].
+///
+/// That is empty input as far as any grammar is concerned, since the top-level
+/// parsers pad their expression with optional whitespace.
+pub(crate) fn is_blank(input: &str) -> bool {
+    input.chars().all(|c| char_kind(c) == CharKind::Space)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CharKind {
     Word,
     Number,
     Punct,
     Space,
+}
+
+/// The kind of token a run starting with `c` becomes.
+fn char_kind(c: char) -> CharKind {
+    if c.is_whitespace() {
+        CharKind::Space
+    } else if c.is_alphabetic() {
+        CharKind::Word
+    } else if c.is_ascii_digit() {
+        CharKind::Number
+    } else {
+        CharKind::Punct
+    }
+}
+
+/// Whether `c` is a combining diacritical mark, which belongs to the letter
+/// before it rather than starting a token of its own.
+///
+/// `char::is_alphabetic` is false for most such marks — U+0308 COMBINING
+/// DIAERESIS, the one NFD German needs, is `Mn` but not `Alphabetic` — so
+/// without this a decomposed umlaut would split its word in two. std has no
+/// general-category query and this crate carries no Unicode tables, so these
+/// are the five Combining Diacritical Marks blocks, spelled out.
+fn is_combining_mark(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0300}'..='\u{036F}'
+            | '\u{1AB0}'..='\u{1AFF}'
+            | '\u{1DC0}'..='\u{1DFF}'
+            | '\u{20D0}'..='\u{20FF}'
+            | '\u{FE20}'..='\u{FE2F}'
+    )
 }
 
 #[cfg(test)]
@@ -152,6 +185,31 @@ mod tests {
     fn non_ascii_words_stay_whole() {
         assert_eq!(kinds("übermorgen"), vec![Token::Word("übermorgen")]);
         assert_eq!(kinds("nächsten"), vec![Token::Word("nächsten")]);
+    }
+
+    #[test]
+    fn combining_marks_continue_a_word() {
+        // NFD `übermorgen`: `u` + U+0308 COMBINING DIAERESIS + `bermorgen`.
+        // U+0308 is not alphabetic, which used to end the word at the mark.
+        let input = "u\u{308}bermorgen";
+        assert_eq!(
+            lex(input),
+            vec![(Token::Word(input), SimpleSpan::from(0..input.len()))]
+        );
+        assert_eq!(
+            kinds("na\u{308}chsten Mo"),
+            vec![
+                Token::Word("na\u{308}chsten"),
+                Token::Space,
+                Token::Word("Mo")
+            ]
+        );
+        // With no letter to attach to, a mark is still punctuation.
+        assert_eq!(kinds("\u{308}"), vec![Token::Punct('\u{308}')]);
+        assert_eq!(
+            kinds("5\u{308}"),
+            vec![Token::Number("5"), Token::Punct('\u{308}')]
+        );
     }
 
     #[test]

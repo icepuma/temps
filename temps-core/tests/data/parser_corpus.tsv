@@ -114,8 +114,12 @@ de	10 minutes ago	ERR
 en	10 minutes ago	Relative(RelativeTime { amount: 10, unit: Minute, direction: Past })
 de	10 years ago	ERR
 en	10 years ago	Relative(RelativeTime { amount: 10, unit: Year, direction: Past })
+de	10:05	Time(Time { hour: 10, minute: 5, second: 0, meridiem: None })
+en	10:05	Time(Time { hour: 10, minute: 5, second: 0, meridiem: None })
 de	10:15 am	ERR
 en	10:15 am	Time(Time { hour: 10, minute: 15, second: 0, meridiem: Some(AM) })
+de	10:5	ERR
+en	10:5	ERR
 de	12:00 AM	ERR
 en	12:00 AM	Time(Time { hour: 12, minute: 0, second: 0, meridiem: Some(AM) })
 de	12:00 PM	ERR
@@ -130,8 +134,24 @@ de	12am	ERR
 en	12am	Time(Time { hour: 12, minute: 0, second: 0, meridiem: Some(AM) })
 de	13:00 pm	ERR
 en	13:00 pm	ERR
+de	14:03:05	Time(Time { hour: 14, minute: 3, second: 5, meridiem: None })
+en	14:03:05	Time(Time { hour: 14, minute: 3, second: 5, meridiem: None })
+de	14:05	Time(Time { hour: 14, minute: 5, second: 0, meridiem: None })
+en	14:05	Time(Time { hour: 14, minute: 5, second: 0, meridiem: None })
 de	14:30	Time(Time { hour: 14, minute: 30, second: 0, meridiem: None })
 en	14:30	Time(Time { hour: 14, minute: 30, second: 0, meridiem: None })
+de	14:30:05	Time(Time { hour: 14, minute: 30, second: 5, meridiem: None })
+en	14:30:05	Time(Time { hour: 14, minute: 30, second: 5, meridiem: None })
+de	14:30:05 Uhr	Time(Time { hour: 14, minute: 30, second: 5, meridiem: None })
+en	14:30:05 Uhr	ERR
+de	14:30:5	ERR
+en	14:30:5	ERR
+de	14:30:5 Uhr	ERR
+en	14:30:5 Uhr	ERR
+de	14:3:05	ERR
+en	14:3:05	ERR
+de	14:5	ERR
+en	14:5	ERR
 de	15-03/2024	ERR
 en	15-03/2024	ERR
 de	15.03.2024	Date(StandardDate { day: 15, month: 3, year: 2024 })
@@ -218,20 +238,38 @@ de	2023-02-29	ERR
 en	2023-02-29	ERR
 de	2023-06-15	Absolute(AbsoluteTime { year: 2023, month: 6, day: 15, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
 en	2023-06-15	Absolute(AbsoluteTime { year: 2023, month: 6, day: 15, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
+de	2024-01-05	Absolute(AbsoluteTime { year: 2024, month: 1, day: 5, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
+en	2024-01-05	Absolute(AbsoluteTime { year: 2024, month: 1, day: 5, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
 de	2024-01-15	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
 en	2024-01-15	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
+de	2024-01-15 09:30	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(9), minute: Some(30), second: None, nanosecond: None, timezone: None })
+en	2024-01-15 09:30	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(9), minute: Some(30), second: None, nanosecond: None, timezone: None })
 de	2024-01-15 14:30:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: None })
 en	2024-01-15 14:30:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: None })
+de	2024-01-15 9:30	ERR
+en	2024-01-15 9:30	ERR
+de	2024-01-15T01:05:05	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(1), minute: Some(5), second: Some(5), nanosecond: None, timezone: None })
+en	2024-01-15T01:05:05	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(1), minute: Some(5), second: Some(5), nanosecond: None, timezone: None })
 de	2024-01-15T14:30:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: None })
 en	2024-01-15T14:30:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: None })
+de	2024-01-15T14:30:00+02	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: 120 }) })
+en	2024-01-15T14:30:00+02	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: 120 }) })
 de	2024-01-15T14:30:00+02:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: 120 }) })
 en	2024-01-15T14:30:00+02:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: 120 }) })
+de	2024-01-15T14:30:00+02:05	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: 125 }) })
+en	2024-01-15T14:30:00+02:05	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: 125 }) })
+de	2024-01-15T14:30:00+02:5	ERR
+en	2024-01-15T14:30:00+02:5	ERR
+de	2024-01-15T14:30:00+2	ERR
+en	2024-01-15T14:30:00+2	ERR
 de	2024-01-15T14:30:00-05:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: -300 }) })
 en	2024-01-15T14:30:00-05:00	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: -300 }) })
 de	2024-01-15T14:30:00.123Z	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: Some(123000000), timezone: Some(Utc) })
 en	2024-01-15T14:30:00.123Z	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: Some(123000000), timezone: Some(Utc) })
 de	2024-01-15T14:30:00Z	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Utc) })
 en	2024-01-15T14:30:00Z	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(14), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Utc) })
+de	2024-01-15T1:5:5	ERR
+en	2024-01-15T1:5:5	ERR
 de	2024-01-15T23:59:00+14:30	ERR
 en	2024-01-15T23:59:00+14:30	ERR
 de	2024-01-15T23:59:00-00:30	Absolute(AbsoluteTime { year: 2024, month: 1, day: 15, hour: Some(23), minute: Some(59), second: Some(0), nanosecond: None, timezone: Some(Offset { total_minutes: -30 }) })
@@ -250,6 +288,8 @@ de	2024-02-29	Absolute(AbsoluteTime { year: 2024, month: 2, day: 29, hour: None,
 en	2024-02-29	Absolute(AbsoluteTime { year: 2024, month: 2, day: 29, hour: None, minute: None, second: None, nanosecond: None, timezone: None })
 de	2024-02-30	ERR
 en	2024-02-30	ERR
+de	2024-1-5	ERR
+en	2024-1-5	ERR
 de	2024-12-25T00:00:00Z	Absolute(AbsoluteTime { year: 2024, month: 12, day: 25, hour: Some(0), minute: Some(0), second: Some(0), nanosecond: None, timezone: Some(Utc) })
 en	2024-12-25T00:00:00Z	Absolute(AbsoluteTime { year: 2024, month: 12, day: 25, hour: Some(0), minute: Some(0), second: Some(0), nanosecond: None, timezone: Some(Utc) })
 de	2024-12-25T15:30:00Z	Absolute(AbsoluteTime { year: 2024, month: 12, day: 25, hour: Some(15), minute: Some(30), second: Some(0), nanosecond: None, timezone: Some(Utc) })
@@ -290,12 +330,16 @@ de	31/04/2024	ERR
 en	31/04/2024	ERR
 de	31/12/2025	ERR
 en	31/12/2025	Date(StandardDate { day: 31, month: 12, year: 2025 })
+de	3:05 pm	ERR
+en	3:05 pm	Time(Time { hour: 3, minute: 5, second: 0, meridiem: Some(PM) })
 de	3:30 PM	ERR
 en	3:30 PM	Time(Time { hour: 3, minute: 30, second: 0, meridiem: Some(PM) })
 de	3:30 pm	ERR
 en	3:30 pm	Time(Time { hour: 3, minute: 30, second: 0, meridiem: Some(PM) })
 de	3:30pm	ERR
 en	3:30pm	Time(Time { hour: 3, minute: 30, second: 0, meridiem: Some(PM) })
+de	3:5 pm	ERR
+en	3:5 pm	ERR
 de	3pm	ERR
 en	3pm	Time(Time { hour: 3, minute: 0, second: 0, meridiem: Some(PM) })
 de	4	ERR
@@ -380,6 +424,10 @@ de	6 months ago	ERR
 en	6 months ago	Relative(RelativeTime { amount: 6, unit: Month, direction: Past })
 de	9:00 PM	ERR
 en	9:00 PM	Time(Time { hour: 9, minute: 0, second: 0, meridiem: Some(PM) })
+de	9:05 Uhr	Time(Time { hour: 9, minute: 5, second: 0, meridiem: None })
+en	9:05 Uhr	ERR
+de	9:5 Uhr	ERR
+en	9:5 Uhr	ERR
 de	Ambiguous local time	ERR
 en	Ambiguous local time	ERR
 de	Ambiguous local time: {message}	ERR
@@ -2080,6 +2128,10 @@ de	morgen um 10:00	DayTime(DayTime { day: Tomorrow, time: Time { hour: 10, minut
 en	morgen um 10:00	ERR
 de	morgen um 10:00 Uhr	DayTime(DayTime { day: Tomorrow, time: Time { hour: 10, minute: 0, second: 0, meridiem: None } })
 en	morgen um 10:00 Uhr	ERR
+de	morgen um 14:05	DayTime(DayTime { day: Tomorrow, time: Time { hour: 14, minute: 5, second: 0, meridiem: None } })
+en	morgen um 14:05	ERR
+de	morgen um 14:5	ERR
+en	morgen um 14:5	ERR
 de	morgen um 15:30	DayTime(DayTime { day: Tomorrow, time: Time { hour: 15, minute: 30, second: 0, meridiem: None } })
 en	morgen um 15:30	ERR
 de	morgen um 24:00	ERR
@@ -2410,6 +2462,10 @@ de	tomorrow at 3:30 pm	ERR
 en	tomorrow at 3:30 pm	DayTime(DayTime { day: Tomorrow, time: Time { hour: 3, minute: 30, second: 0, meridiem: Some(PM) } })
 de	tomorrow at 3pm	ERR
 en	tomorrow at 3pm	DayTime(DayTime { day: Tomorrow, time: Time { hour: 3, minute: 0, second: 0, meridiem: Some(PM) } })
+de	tomorrow at 9:05 am	ERR
+en	tomorrow at 9:05 am	DayTime(DayTime { day: Tomorrow, time: Time { hour: 9, minute: 5, second: 0, meridiem: Some(AM) } })
+de	tomorrow at 9:5 am	ERR
+en	tomorrow at 9:5 am	ERR
 de	tomorrow evening	ERR
 en	tomorrow evening	DayTime(DayTime { day: Tomorrow, time: Time { hour: 18, minute: 0, second: 0, meridiem: None } })
 de	tomorrow morning	ERR

@@ -418,3 +418,209 @@ fn whitespace_separates_a_number_from_its_unit() {
         "`in 5minutes` should not parse"
     );
 }
+
+// ===== Fixed-width fields =====
+
+/// A clock minute or second, and every ISO 8601 field, is written with two
+/// digits. They used to share the one-or-two-digit helper a clock hour needs,
+/// so `10:5` quietly read as 10:05 (when 10:50 may have been meant) and
+/// `2024-1-5` passed as ISO 8601, which jiff and chrono both reject. Each row
+/// pairs a short field with its two-digit spelling, which must still parse.
+#[test]
+fn fixed_width_fields_need_both_digits() {
+    let clock_times = [
+        (Language::English, "10:5", "10:05"),
+        (Language::English, "3:5 pm", "3:05 pm"),
+        (Language::English, "14:30:5", "14:30:05"),
+        (Language::English, "14:3:05", "14:03:05"),
+        (
+            Language::English,
+            "tomorrow at 9:5 am",
+            "tomorrow at 9:05 am",
+        ),
+        (Language::German, "14:5", "14:05"),
+        (Language::German, "9:5 Uhr", "9:05 Uhr"),
+        (Language::German, "14:30:5 Uhr", "14:30:05 Uhr"),
+        (Language::German, "morgen um 14:5", "morgen um 14:05"),
+    ];
+    // The ISO 8601 grammar is shared, so it is checked in both languages.
+    let iso = [
+        ("2024-1-5", "2024-01-05"),
+        ("2024-1-15", "2024-01-15"),
+        ("2024-01-5", "2024-01-05"),
+        ("2024-01-15T1:5:5", "2024-01-15T01:05:05"),
+        ("2024-01-15T1:30:00", "2024-01-15T01:30:00"),
+        ("2024-01-15T14:3:00", "2024-01-15T14:03:00"),
+        ("2024-01-15T14:30:5", "2024-01-15T14:30:05"),
+        ("2024-01-15 9:30", "2024-01-15 09:30"),
+        ("2024-01-15T14:30:00+2", "2024-01-15T14:30:00+02"),
+        ("2024-01-15T14:30:00+02:5", "2024-01-15T14:30:00+02:05"),
+        ("2024-01-15T14:30:00-5:30", "2024-01-15T14:30:00-05:30"),
+    ]
+    .into_iter()
+    .flat_map(|(short, full)| {
+        [
+            (Language::English, short, full),
+            (Language::German, short, full),
+        ]
+    });
+
+    for (lang, short, full) in clock_times.into_iter().chain(iso) {
+        assert!(
+            parse(short, lang).is_err(),
+            "[{lang:?}] {short:?} has a one-digit fixed-width field and must not parse, got {:?}",
+            parse(short, lang)
+        );
+        assert!(
+            parse(full, lang).is_ok(),
+            "[{lang:?}] {full:?} should parse: {:?}",
+            parse(full, lang)
+        );
+    }
+}
+
+/// The flip side: a clock hour and the day and month of a dotted or slashed
+/// date are *not* fixed-width, so their one-digit forms keep parsing.
+#[test]
+fn hours_and_date_components_keep_their_one_digit_form() {
+    for (lang, input) in [
+        (Language::English, "9:30"),
+        (Language::English, "3:30 pm"),
+        (Language::English, "3 pm"),
+        (Language::English, "half past 3"),
+        (Language::English, "tomorrow at 9:05 am"),
+        (Language::English, "1/1/2023"),
+        (Language::English, "1-12-2023"),
+        (Language::German, "9:45 Uhr"),
+        (Language::German, "morgen um 9:30"),
+        (Language::German, "1.12.2023"),
+    ] {
+        assert!(
+            parse(input, lang).is_ok(),
+            "[{lang:?}] {input:?} should parse: {:?}",
+            parse(input, lang)
+        );
+    }
+}
+
+// ===== Empty input =====
+
+fn parse_error(input: &str, lang: Language) -> (String, Option<usize>) {
+    match parse(input, lang) {
+        Err(TempsError::ParseError {
+            message, position, ..
+        }) => (message, position),
+        other => panic!("[{lang:?}] expected a parse error for {input:?}, got {other:?}"),
+    }
+}
+
+/// To the grammar, whitespace-only input *is* empty input: the lexer folds it
+/// into one `Space` token and the top-level padding discards it. It used to
+/// miss the dedicated empty-input message, because that checked the raw string
+/// for `""`, and got the all-alternatives report under a blank source line.
+#[test]
+fn whitespace_only_input_is_reported_as_empty() {
+    for lang in [Language::English, Language::German] {
+        let (empty, position) = parse_error("", lang);
+        assert_eq!(position, Some(0));
+        for input in [" ", "   ", "\t", "\n", " \t\r\n ", "\u{a0}", "\u{3000}"] {
+            assert_eq!(
+                parse_error(input, lang),
+                (empty.clone(), Some(0)),
+                "[{lang:?}] {input:?} should get the empty-input message"
+            );
+        }
+
+        // Only input with nothing *but* whitespace counts as empty.
+        let (message, _) = parse_error(" x ", lang);
+        assert_ne!(message, empty, "[{lang:?}] ` x ` is not empty input");
+    }
+}
+
+/// The empty-input message suggests what to type instead, so every example it
+/// names must parse in the language the caller chose. German callers used to
+/// be offered `now` and `in 5 minutes`, both of which the German grammar
+/// rejects.
+#[test]
+fn the_empty_input_hint_only_suggests_inputs_that_parse() {
+    for lang in [Language::English, Language::German] {
+        let (message, _) = parse_error("", lang);
+        let examples: Vec<&str> = message.split('`').skip(1).step_by(2).collect();
+        assert!(
+            !examples.is_empty(),
+            "[{lang:?}] the hint should name examples in backticks: {message}"
+        );
+        for example in examples {
+            assert!(
+                parse(example, lang).is_ok(),
+                "[{lang:?}] the empty-input hint suggests {example:?}, which does not parse: \
+                 {message}"
+            );
+        }
+    }
+
+    let (german, _) = parse_error("", Language::German);
+    assert!(german.contains("`jetzt`"), "{german}");
+}
+
+// ===== German noun capitalisation diagnostics =====
+
+/// German nouns are matched case-sensitively by design, so `montag` stays an
+/// error — but it used to get exactly the error a nonsense word gets
+/// ("expected Wochentag, found `montag`"), hiding that only the capital letter
+/// was wrong.
+#[test]
+fn a_miscased_german_noun_is_rejected_with_a_capitalisation_hint() {
+    for (input, noun) in [
+        ("nächsten montag", "Montag"),
+        ("letzten FREITAG", "Freitag"),
+        ("montag", "Montag"),
+        ("MONTAG", "Montag"),
+        ("sonntag um 10:00", "Sonntag"),
+        ("in 5 minuten", "Minuten"),
+        ("vor 2 tagen", "Tagen"),
+        ("in 3 STUNDEN", "Stunden"),
+        ("in einer woche", "Woche"),
+        ("vor einem jahr", "Jahr"),
+        ("in 30 sekunden", "Sekunden"),
+    ] {
+        let (message, _) = parse_error(input, Language::German);
+        let hint = format!("German nouns are capitalised; write `{noun}`");
+        assert!(
+            message.contains(&hint),
+            "{input:?} should carry the hint {hint:?}:\n{message}"
+        );
+    }
+}
+
+/// The hint is for real nouns only. A word that is no noun in any case keeps
+/// the plain category diagnostic, and correctly cased nouns and the
+/// case-insensitive abbreviations still parse.
+#[test]
+fn the_capitalisation_hint_changes_no_verdict() {
+    for input in ["nächsten Blah", "in 5 Blah", "nächsten Montg", "blah"] {
+        let (message, _) = parse_error(input, Language::German);
+        assert!(
+            !message.contains("capitalised"),
+            "{input:?} is no miscased noun:\n{message}"
+        );
+    }
+
+    for input in [
+        "nächsten Montag",
+        "Montag",
+        "nächsten MO",
+        "in 5 Minuten",
+        "in 5 MIN",
+        "vor 2 Tagen",
+        "in 3 STD",
+    ] {
+        assert!(
+            parse(input, Language::German).is_ok(),
+            "{input:?} should parse"
+        );
+    }
+
+    // English has no case rule, so it is untouched.
+    assert!(parse("next MONDAY", Language::English).is_ok());
+}
