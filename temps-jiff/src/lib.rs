@@ -43,9 +43,16 @@
 //! All parsing operations return `Result<Zoned, TempsError>`. Common errors include:
 //!
 //! - `ParseError`: Invalid input that cannot be parsed
-//! - `DateCalculationError`: Date arithmetic that results in invalid dates
+//! - `DateCalculationError`: A relative expression or a day reference, with or
+//!   without a time, whose result is outside jiff's range (the error's context
+//!   carries jiff's reason), or a negative relative amount
+//! - `ArithmeticOverflow`: A relative amount too large for a `jiff::Span`
 //! - `InvalidDate`/`InvalidTime`: Components that are out of valid ranges
-//! - `BackendError`: Errors from the jiff library
+//! - `BackendError`: Errors from the jiff library, including an absolute
+//!   expression, a calendar date or a bare time of day outside jiff's range
+//!
+//! [`JiffProvider`]'s range limits say which error each kind of expression
+//! gets at the edges of jiff's range, and how that differs from chrono.
 
 use jiff::{Span, Zoned};
 use temps_core::{
@@ -76,11 +83,16 @@ use temps_core::{
 /// **Upper edge.** The last accepted local datetime is `9999-12-30T22:00:00` in
 /// UTC, `9999-12-30T17:00:00` at `-05:00` and `9999-12-31T07:00:00` at `+09:00`.
 /// A date-only expression resolves to local midnight, so `9999-12-31` fails in
-/// UTC but succeeds in `Asia/Tokyo`. Past that point, absolute expressions and
-/// bare times of day (`22:30`) fail with `TempsError::BackendError`. Relative
-/// expressions (`in 1 day` from `9999-12-30T12:00`, say) and day references
-/// with or without a time (`tomorrow`, `tomorrow at 10:00`, `tonight`) fail
-/// with `TempsError::DateCalculationError`.
+/// UTC but succeeds in `Asia/Tokyo`. Past that point, absolute expressions,
+/// calendar dates (`31/12/9999`) and bare times of day (`22:30`) fail with
+/// `TempsError::BackendError`. Relative expressions (`in 1 day` from
+/// `9999-12-30T12:00Z`, say) and day references with or without a time
+/// (`tomorrow`, `tomorrow at 10:00`, `tonight`) fail with
+/// `TempsError::DateCalculationError`. A day with a time fails that way even
+/// when the day's midnight is in range and only the time is not: pinned at
+/// `9999-12-30T12:00Z`, `today at 22:00:01` is a
+/// `TempsError::DateCalculationError`, while the bare time `22:00:01` is a
+/// `TempsError::BackendError`.
 ///
 /// `later today` resolves at the upper edge, too. On a day whose next midnight
 /// jiff cannot represent (all of `9999-12-30` in UTC, `9999-12-31` in
@@ -107,10 +119,26 @@ use temps_core::{
 /// `-009999-01-02T02:30Z`, `today` fails because that day's midnight is out of
 /// range, but `today at 22:00` succeeds.
 ///
+/// **Which error.** An out-of-range result is reported by what produced it:
+///
+/// - `TempsError::DateCalculationError` for a relative expression, a day
+///   reference with or without a time, and the rare `later today` failure
+///   above. Its message says what fell outside the range, and its `context`
+///   carries jiff's reason.
+/// - `TempsError::ArithmeticOverflow` for a relative amount too large for a
+///   `jiff::Span` to hold at all, such as more than 19,998 years or 7,304,484
+///   days. That fails from any clock: `in 19999 years` is an
+///   `ArithmeticOverflow`, while `in 19998 years` from 2024 is a
+///   `DateCalculationError`.
+/// - `TempsError::BackendError` for an absolute expression, a calendar date or
+///   a bare time of day, carrying jiff's message.
+///
 /// These are range limits of the underlying library, not defects.
 /// `ChronoProvider` reaches far beyond both edges and accepts the same
-/// expressions. The range limits are the only intended difference between the
-/// two backends.
+/// expressions. Where chrono's own, much wider range runs out, it reports every
+/// out-of-range result as `TempsError::ArithmeticOverflow`, so code that
+/// matches on the variant sees different ones from the two backends for the
+/// same kind of failure.
 ///
 /// ## Known upstream issues
 ///
