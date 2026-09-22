@@ -14,5 +14,4 @@ temps-core = { path = "../temps-core", version = "=5.0.0" }
 chrono = "0.4.45"
 
 [dev-dependencies]
-mockall = "0.15.0"
 temps-testhelpers = { path = "../temps-testhelpers", features = ["chrono"] }

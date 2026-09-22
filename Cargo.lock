@@ -565,7 +565,6 @@ name = "temps-chrono"
 version = "5.0.0"
 dependencies = [
  "chrono",
- "mockall",
  "temps-core",
  "temps-testhelpers",
 ]
@@ -584,9 +583,7 @@ name = "temps-jiff"
 version = "5.0.0"
 dependencies = [
  "jiff",
- "mockall",
  "temps-core",
- "temps-testhelpers",
 ]
 
 [[package]]
