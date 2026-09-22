@@ -38,3 +38,25 @@ jobs:
       - run: rustup toolchain install 1.88 --profile minimal
       - uses: Swatinem/rust-cache@v2
       - run: cargo +1.88 check --locked --workspace --all-features --all-targets
+
+  # The member manifests floor each third-party dependency at the oldest release the workspace
+  # works with. Resolve every direct dependency to that floor (transitive ones stay at the newest
+  # compatible release) and run the tests, so a floor cannot silently rot. Only the resolution
+  # needs nightly; the build itself uses the toolchain from rust-toolchain.toml.
+  minimal-versions:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - run: cargo +nightly update -Z direct-minimal-versions
+      # After the update, so the cache key follows the minimal lockfile.
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo nextest run --locked --workspace --all-features
+      - run: cargo test --doc --locked --workspace --all-features
+      - run: cargo run --locked --example chrono_example --features chrono
+      - run: cargo run --locked --example jiff_example --features jiff
