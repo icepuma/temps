@@ -47,7 +47,9 @@ pub enum TempsError {
     /// ```
     #[error("Failed to parse time expression: {message}")]
     ParseError {
-        /// The specific parsing error message
+        /// The specific parsing error message. For the built-in parsers this
+        /// is a rendered report that stays small however long the input is:
+        /// see [`rich_errors_to_temps_error`]
         message: String,
         /// The input that failed to parse
         input: String,
@@ -344,6 +346,13 @@ pub type Result<T> = std::result::Result<T, TempsError>;
 /// the byte-to-character translation below needs, and it is why umlaut input
 /// still gets a caret in the right place.
 ///
+/// The message does not grow with the input. A token longer than 32
+/// characters is quoted only in part, ending in `…`. A source line longer than
+/// 100 characters is cut down to the stretch around the error, with `…` marking
+/// each cut and at most 32 characters underlined; the report's header still
+/// names the error's line and column in the whole input. The whole input stays
+/// in the error's `input` field.
+///
 /// Empty input, and input that is nothing but whitespace (which every grammar
 /// pads away, so it is empty to them too), gets a short language-neutral
 /// message at position 0 instead of a report with nothing to underline. The
@@ -369,8 +378,6 @@ pub(crate) fn rich_errors_to_temps_error_with_empty_hint(
     errors: Vec<chumsky::error::Rich<'_, crate::lexer::Token<'_>>>,
     empty_hint: &str,
 ) -> TempsError {
-    use ariadne::{Color, Config, Label, Report, ReportKind, Source};
-
     if crate::lexer::is_blank(input) {
         return TempsError::parse_error_with_position(empty_hint, input, 0);
     }
@@ -392,33 +399,28 @@ pub(crate) fn rich_errors_to_temps_error_with_empty_hint(
         .map(|e| byte_to_char(e.span().start))
         .unwrap_or(0);
 
-    let source_id: &str = "input";
+    let source = ariadne::Source::from(input);
     let mut rendered = String::new();
     for err in &errors {
         let span = err.span();
         let start = byte_to_char(span.start);
         let end = byte_to_char(span.end).max(start + 1).min(char_len.max(1));
         let range = start..end;
-        let mut buf = Vec::new();
         let (headline, detail) = format_rich(err);
-        let report = Report::build(ReportKind::Error, (source_id, range.clone()))
-            .with_config(Config::default().with_color(false))
-            .with_message(headline)
-            .with_label(
-                Label::new((source_id, range))
-                    .with_message(detail)
-                    .with_color(Color::Red),
-            )
-            .finish();
+        let report = match Excerpt::cut(input, &source, range.clone()) {
+            None => render_report(&source, range, &headline, &detail),
+            Some(excerpt) => excerpt.render(&headline, &detail),
+        };
 
-        if report
-            .write((source_id, Source::from(input)), &mut buf)
-            .is_ok()
-        {
-            rendered.push_str(&String::from_utf8_lossy(&buf));
-        } else {
-            rendered.push_str(&err.to_string());
-            rendered.push('\n');
+        match report {
+            Some(report) => rendered.push_str(&report),
+            // The same parts as a report, so no longer than one.
+            None => {
+                rendered.push_str(&headline);
+                rendered.push_str(": ");
+                rendered.push_str(&detail);
+                rendered.push('\n');
+            }
         }
     }
 
@@ -429,6 +431,147 @@ pub(crate) fn rich_errors_to_temps_error_with_empty_hint(
     };
 
     TempsError::parse_error_with_position(message, input, position)
+}
+
+/// The name a rendered report gives its source, as in `input:1:6`.
+const SOURCE_ID: &str = "input";
+
+/// A source line of at most this many characters is echoed whole in a
+/// diagnostic; a longer one is cut down to an [`Excerpt`].
+const MAX_ECHOED_LINE: usize = 100;
+
+/// Characters kept on either side of the error when a long line is cut down.
+const EXCERPT_CONTEXT: usize = 32;
+
+/// Most characters of a single token that a diagnostic underlines or quotes.
+const MAX_ECHOED_TOKEN: usize = 32;
+
+/// Render one uncoloured report headed `headline` that underlines `range`
+/// (characters of `source`) with `detail`, or `None` if ariadne cannot.
+fn render_report<S: AsRef<str>>(
+    source: &ariadne::Source<S>,
+    range: std::ops::Range<usize>,
+    headline: &str,
+    detail: &str,
+) -> Option<String> {
+    use ariadne::{Color, Config, Label, Report, ReportKind};
+
+    let mut buf = Vec::new();
+    Report::build(ReportKind::Error, (SOURCE_ID, range.clone()))
+        .with_config(Config::default().with_color(false))
+        .with_message(headline)
+        .with_label(
+            Label::new((SOURCE_ID, range))
+                .with_message(detail)
+                .with_color(Color::Red),
+        )
+        .finish()
+        .write((SOURCE_ID, source), &mut buf)
+        .ok()?;
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// The input with the line an error starts on cut down to the stretch around
+/// the error, so that rendering it costs the same however long the line is.
+///
+/// ariadne echoes every line a label touches in full, draws one underline
+/// character per labelled character, and has no option to limit either.
+struct Excerpt {
+    /// The input up to the error's line, verbatim so that ariadne numbers the
+    /// line as it would in the whole input (it renders only labelled lines),
+    /// then the kept stretch of the line with `…` at each cut. Nothing after
+    /// the stretch is kept.
+    text: String,
+    /// The part of the error to underline, in characters of `text`: at most
+    /// [`MAX_ECHOED_TOKEN`] of them, all on the error's first line.
+    range: std::ops::Range<usize>,
+    /// The `input:line:column` ariadne puts in the header for `text`, whose
+    /// column counts from the start of the kept stretch...
+    shown_location: String,
+    /// ...and the one the error has in the whole input.
+    true_location: String,
+}
+
+impl Excerpt {
+    /// Cut down the line that `range` (characters of `input`, whose rendering
+    /// is `source`) starts on, or return `None` when every line the error
+    /// touches is short enough to echo whole.
+    fn cut(
+        input: &str,
+        source: &ariadne::Source<&str>,
+        range: std::ops::Range<usize>,
+    ) -> Option<Self> {
+        let too_long = source.get_line_range(&range).any(|idx| {
+            source
+                .line(idx)
+                .is_some_and(|line| line.len() > MAX_ECHOED_LINE)
+        });
+        if !too_long {
+            return None;
+        }
+
+        // `line` covers its terminator, so `line_end` is where the next begins.
+        let (line, line_idx, column) = source.get_offset_line(range.start)?;
+        let line_end = line.offset() + line.len();
+        let label_end = range.end.min(line_end).min(range.start + MAX_ECHOED_TOKEN);
+        let keep_start = range
+            .start
+            .saturating_sub(EXCERPT_CONTEXT)
+            .max(line.offset());
+        let mut keep_end = (label_end + EXCERPT_CONTEXT).min(line_end);
+        // One character left over could be the `\n` of a `\r\n`; cutting it
+        // off would save nothing anyway.
+        if line_end - keep_end == 1 {
+            keep_end = line_end;
+        }
+        let cut_front = keep_start > line.offset();
+        let cut_back = keep_end < line_end;
+
+        // Character offsets to byte offsets: always a char boundary.
+        let byte = |char_offset: usize| {
+            input
+                .char_indices()
+                .nth(char_offset)
+                .map_or(input.len(), |(byte, _)| byte)
+        };
+        let mut text = input[..byte(line.offset())].to_string();
+        if cut_front {
+            text.push('…');
+        }
+        text.push_str(&input[byte(keep_start)..byte(keep_end)]);
+        if cut_back {
+            text.push('…');
+        }
+
+        let shown_column = usize::from(cut_front) + (range.start - keep_start);
+        let shown_start = line.offset() + shown_column;
+        let line_no = line_idx + 1;
+        Some(Self {
+            text,
+            range: shown_start..shown_start + (label_end - range.start),
+            shown_location: format!("{SOURCE_ID}:{line_no}:{}", shown_column + 1),
+            true_location: format!("{SOURCE_ID}:{line_no}:{}", column + 1),
+        })
+    }
+
+    /// Render the report, with the header's column put back to the error's
+    /// column in the whole input.
+    fn render(&self, headline: &str, detail: &str) -> Option<String> {
+        let source = ariadne::Source::from(self.text.as_str());
+        let report = render_report(&source, self.range.clone(), headline, detail)?;
+        // The header is the first place the location appears: the headline
+        // above it is one of `format_rich`'s fixed phrases.
+        Some(report.replacen(&self.shown_location, &self.true_location, 1))
+    }
+}
+
+/// `text` cut to its first [`MAX_ECHOED_TOKEN`] characters, with `…` marking
+/// a cut.
+fn shorten(text: &str) -> std::borrow::Cow<'_, str> {
+    match text.char_indices().nth(MAX_ECHOED_TOKEN) {
+        Some((cut, _)) => format!("{}…", &text[..cut]).into(),
+        None => text.into(),
+    }
 }
 
 /// Render a chumsky [`Rich`](chumsky::error::Rich) error as a `(headline, detail)`
@@ -444,6 +587,7 @@ fn format_rich(err: &chumsky::error::Rich<'_, crate::lexer::Token<'_>>) -> (Stri
             // which reads badly inside backticks.
             let found = match err.found() {
                 Some(Token::Space) => "whitespace".to_string(),
+                Some(Token::Word(text) | Token::Number(text)) => format!("`{}`", shorten(text)),
                 Some(token) => format!("`{token}`"),
                 None => "end of input".to_string(),
             };
