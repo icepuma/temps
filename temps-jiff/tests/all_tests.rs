@@ -318,6 +318,131 @@ fn amounts_within_span_range_but_beyond_the_calendar_fail_without_panicking() {
     );
 }
 
+#[test]
+fn arithmetic_beyond_the_calendar_says_what_failed() {
+    // The message must describe the failure rather than repeat the variant's
+    // own "Date calculation error" prefix, and jiff's reason must be kept.
+    let provider = JiffProvider::at(utc(2024, 3, 15, 10, 30));
+    let near_the_end = JiffProvider::at(utc(9999, 12, 30, 21, 0));
+
+    let cases = [
+        (&provider, "in 9000 years", Language::English),
+        (&provider, "12100 years ago", Language::English),
+        (&provider, "in 3000000 days", Language::English),
+        (&provider, "in 10000 Jahren", Language::German),
+        (&near_the_end, "later today", Language::English),
+    ];
+
+    for (provider, input, language) in cases {
+        let expr = parse(input, language).unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+        let error = provider
+            .parse_expression(expr)
+            .expect_err("the result is outside jiff's range");
+
+        let TempsError::DateCalculationError { message, context } = &error else {
+            panic!("{input:?} should be a date calculation error, got {error:?}");
+        };
+        assert_ne!(
+            message,
+            temps_core::errors::ERR_DATE_CALC_ERROR,
+            "{input:?} repeats the variant name instead of saying what failed"
+        );
+        assert!(
+            message.contains("outside the supported range"),
+            "{input:?} has an unhelpful message: {message:?}"
+        );
+        assert!(
+            context.as_deref().is_some_and(|c| !c.is_empty()),
+            "{input:?} dropped jiff's reason: {error:?}"
+        );
+        assert!(
+            !error
+                .to_string()
+                .contains("Date calculation error: Date calculation error"),
+            "{input:?} renders tautologically: {error}"
+        );
+    }
+}
+
+// ===== Range limits =====
+
+/// A clock `minutes` after the first instant jiff can represent,
+/// `-009999-01-02T01:59:59Z`, in the given zone.
+fn just_after_timestamp_min(minutes: i64, zone: TimeZone) -> Zoned {
+    jiff::Timestamp::MIN
+        .checked_add(Span::new().minutes(minutes))
+        .unwrap()
+        .to_zoned(zone)
+}
+
+#[test]
+fn day_at_time_on_the_first_representable_day_matches_the_bare_time() {
+    // The local midnight of jiff's first day precedes `Timestamp::MIN`, but its
+    // evening does not. A day-at-time expression has to convert only the wall
+    // time it asks for, exactly as the bare time does.
+    let utc_cases: &[_] = &[
+        ("today at 22:00", "22:00", Language::English),
+        ("today at 3 pm", "3 pm", Language::English),
+        ("tonight", "20:00", Language::English),
+        ("this evening", "18:00", Language::English),
+        ("heute um 22:00", "22:00", Language::German),
+    ];
+    // At -05:00 the first representable local instant is 20:59:59 on
+    // -9999-01-01, so only a late evening is in range on that local day.
+    let minus_five_cases: &[_] = &[
+        ("today at 22:00", "22:00", Language::English),
+        ("heute um 22:00", "22:00", Language::German),
+    ];
+
+    for (zone, cases) in [
+        (TimeZone::UTC, utc_cases),
+        (TimeZone::fixed(jiff::tz::offset(-5)), minus_five_cases),
+    ] {
+        let provider = JiffProvider::at(just_after_timestamp_min(30, zone.clone()));
+
+        assert!(
+            provider
+                .parse_expression(TimeExpression::Day(DayReference::Today))
+                .is_err(),
+            "the day's own midnight is out of range, so the premise does not hold"
+        );
+
+        for &(day_time, bare_time, language) in cases {
+            assert_eq!(
+                resolve(&provider, day_time, language),
+                resolve(&provider, bare_time, language),
+                "{day_time:?} disagrees with {bare_time:?} at {zone:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn day_at_time_can_reach_back_to_the_first_representable_day() {
+    let first_day_at_22 = date(-9999, 1, 2)
+        .at(22, 0, 0, 0)
+        .to_zoned(TimeZone::UTC)
+        .unwrap();
+
+    // One day after the first representable day.
+    let provider = JiffProvider::at(utc(-9999, 1, 3, 10, 0));
+    assert_eq!(
+        resolve(&provider, "yesterday at 22:00", Language::English),
+        first_day_at_22
+    );
+    assert_eq!(
+        resolve(&provider, "gestern um 22:00", Language::German),
+        first_day_at_22
+    );
+
+    // -9999-01-02 is a Tuesday; the pinned day is the following Monday.
+    let provider = JiffProvider::at(utc(-9999, 1, 8, 8, 0));
+    assert_eq!(
+        resolve(&provider, "last tuesday at 22:00", Language::English),
+        first_day_at_22
+    );
+}
+
 // ===== Absolute times =====
 
 #[test]
@@ -572,6 +697,11 @@ fn a_day_skipped_at_the_date_line_does_not_error() {
         "2011-12-31",
         "the whole skipped day should shift forward by the gap"
     );
+
+    // A time on the skipped day shifts forward by the same gap.
+    let afternoon = resolve(&provider, "tomorrow at 15:00", Language::English);
+    assert_eq!(afternoon.date().to_string(), "2011-12-31");
+    assert_eq!(afternoon.hour(), 15);
 }
 
 // ===== Weekdays =====
