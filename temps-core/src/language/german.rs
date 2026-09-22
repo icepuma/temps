@@ -390,3 +390,60 @@ impl LanguageParser for GermanParser {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(hour: u8, minute: u8) -> Time {
+        Time {
+            hour,
+            minute,
+            second: 0,
+            meridiem: None,
+        }
+    }
+
+    /// Each left-factored rule, run on its own up to `end()`, must parse the
+    /// bare form *and* every extension of it to the right value. Un-factoring
+    /// a rule into sibling alternatives lets the bare form commit first and
+    /// strand the tail, which turns the extended rows here into `None`.
+    #[test]
+    fn left_factored_rules_parse_the_bare_and_the_extended_form() {
+        use DayReference::{DayAfterTomorrow, Tomorrow};
+        use TimeExpression::{Day, DayTime as At};
+        let with = |day, time| At(DayTime { day, time });
+        let next_monday = DayReference::Weekday {
+            day: Weekday::Monday,
+            modifier: Some(WeekdayModifier::Next),
+        };
+
+        for (input, expected) in [
+            ("morgen", Day(Tomorrow)),
+            ("morgen um 15:30", with(Tomorrow, at(15, 30))),
+            ("morgen um 15:30 Uhr", with(Tomorrow, at(15, 30))),
+            ("nächsten Montag", Day(next_monday)),
+            ("nächsten Montag um 9:45 Uhr", with(next_monday, at(9, 45))),
+            ("übermorgen", Day(DayAfterTomorrow)),
+            ("übermorgen um 08:00", with(DayAfterTomorrow, at(8, 0))),
+        ] {
+            assert_eq!(
+                run!(input, day_expr()),
+                Some(expected),
+                "day_expr on {input:?}"
+            );
+        }
+
+        // The optional `Uhr` is the same pattern one level down.
+        for (input, expected) in [
+            ("14:30", TimeExpression::Time(at(14, 30))),
+            ("14:30 Uhr", TimeExpression::Time(at(14, 30))),
+        ] {
+            assert_eq!(
+                run!(input, time_expr()),
+                Some(expected),
+                "time_expr on {input:?}"
+            );
+        }
+    }
+}
