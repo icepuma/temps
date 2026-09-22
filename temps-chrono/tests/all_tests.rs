@@ -6,7 +6,10 @@
 //! assert that the duplicate is self-consistent, and drifts away from the code
 //! it is supposed to guard.
 
-use chrono::{DateTime, Datelike, Days, Duration, Local, Offset, TimeZone, Timelike, Utc};
+use chrono::{
+    DateTime, Datelike, Days, Duration, Local, NaiveDate, NaiveDateTime, Offset, TimeZone,
+    Timelike, Utc,
+};
 use temps_chrono::{ChronoProvider, parse_to_datetime};
 use temps_core::*;
 use temps_testhelpers::chrono::{fixed_datetime, test_dates};
@@ -30,6 +33,25 @@ fn try_resolve(
     language: Language,
 ) -> Result<DateTime<Local>> {
     provider.parse_expression(parse(input, language)?)
+}
+
+/// Assert that `input` is rejected as an arithmetic overflow: the error every
+/// result outside chrono's range is reported as.
+fn assert_overflow(provider: &ChronoProvider, input: &str, language: Language) {
+    let result = try_resolve(provider, input, language);
+    assert!(
+        matches!(result, Err(TempsError::ArithmeticOverflow { .. })),
+        "expected overflow for {input:?}, got {result:?}"
+    );
+}
+
+/// The local instant with the given wall-clock reading, for readings that are
+/// neither skipped nor repeated in the zone the test runs in.
+fn local_instant(naive: NaiveDateTime) -> DateTime<Local> {
+    Local
+        .from_local_datetime(&naive)
+        .single()
+        .unwrap_or_else(|| panic!("{naive} should name exactly one local instant"))
 }
 
 /// The local instant whose UTC reading is the given clock time.
@@ -517,6 +539,29 @@ fn later_today_stays_within_the_current_day() {
     assert!(result >= late, "later today must not resolve into the past");
 }
 
+/// chrono cannot name the day after `NaiveDate::MAX`, but that is no reason to
+/// fail when two hours on is still today: nothing needs clamping.
+#[test]
+fn later_today_on_the_last_date_chrono_can_name_is_two_hours_on() {
+    let base = local_instant(
+        NaiveDate::MAX
+            .and_hms_opt(10, 0, 0)
+            .expect("valid time of day"),
+    );
+    let provider = ChronoProvider::at(base);
+
+    assert_eq!(
+        resolve(&provider, "later today", Language::English),
+        base + Duration::hours(2)
+    );
+    assert_eq!(
+        provider
+            .parse_expression(TimeExpression::LaterToday)
+            .unwrap(),
+        base + Duration::hours(2)
+    );
+}
+
 // ===== Absolute dates and times =====
 
 #[test]
@@ -697,6 +742,11 @@ fn apia_suite() {
     run_zone_suite("Pacific/Apia", "zone_pinned::apia");
 }
 
+#[test]
+fn tokyo_suite() {
+    run_zone_suite("Asia/Tokyo", "zone_pinned::tokyo");
+}
+
 /// Tests that only make sense in a specific time zone.
 ///
 /// Each is `#[ignore]`d because it needs `TZ` set for the whole process; the
@@ -707,7 +757,7 @@ fn apia_suite() {
 /// ```
 mod zone_pinned {
     use super::*;
-    use chrono::NaiveDate;
+    use chrono::TimeDelta;
 
     /// Every instant that really renders as local midnight on the given date:
     /// empty where the civil time is skipped by a transition, two entries where
@@ -828,6 +878,91 @@ mod zone_pinned {
         assert_eq!(day_after.date_naive().to_string(), "2024-11-04");
     }
 
+    /// West of UTC, chrono's last date ends in UTC before it ends on the wall
+    /// clock: 21:00 on it is already past the last UTC instant. Landing there
+    /// is a range overflow, the same error one day further gives, not a DST
+    /// ambiguity — there is no transition anywhere near.
+    #[test]
+    #[ignore = "requires TZ=America/New_York; run via us_eastern_suite"]
+    fn us_eastern_day_offsets_past_the_utc_range_report_overflow() {
+        let base = instant_at_utc(2024, 6, 13, 1, 0); // 2024-06-12 21:00 EDT
+        assert_eq!(base.hour(), 21, "expected 21:00 local in US Eastern");
+        let provider = ChronoProvider::at(base);
+        let days_to_last_date = (NaiveDate::MAX - base.date_naive()).num_days();
+
+        let day_before = resolve(
+            &provider,
+            &format!("in {} days", days_to_last_date - 1),
+            Language::English,
+        );
+        assert_eq!(day_before.date_naive(), NaiveDate::MAX.pred_opt().unwrap());
+
+        for amount in [days_to_last_date, days_to_last_date + 1] {
+            assert_overflow(&provider, &format!("in {amount} days"), Language::English);
+            assert_overflow(&provider, &format!("in {amount} Tagen"), Language::German);
+        }
+
+        // The same holds for a time of day named on that date.
+        let provider =
+            ChronoProvider::at(local_instant(NaiveDate::MAX.and_hms_opt(12, 0, 0).unwrap()));
+        assert_eq!(
+            resolve(&provider, "3 pm", Language::English).hour(),
+            15,
+            "15:00 is still within range"
+        );
+        assert_overflow(&provider, "23:00", Language::English);
+        assert_overflow(&provider, "11 pm", Language::English);
+    }
+
+    /// West of UTC, going back to the start of chrono's range runs out of
+    /// local wall clock first: an instant just after the first UTC instant
+    /// reads as a local time before `NaiveDateTime::MIN`. Such a value used to
+    /// come back as `Ok` and panic in `date_naive()`.
+    #[test]
+    #[ignore = "requires TZ=America/New_York; run via us_eastern_suite"]
+    fn us_eastern_sub_day_offsets_before_the_local_range_report_overflow() {
+        let base = instant_at_utc(2024, 6, 13, 1, 0); // 2024-06-12 21:00 EDT
+        let provider = ChronoProvider::at(base);
+
+        // Lands exactly on the first UTC instant, whose local reading does not
+        // exist; one more hour is past the UTC range as well.
+        let hours_to_first_instant = (base.naive_utc() - NaiveDateTime::MIN).num_hours();
+        for amount in [hours_to_first_instant, hours_to_first_instant + 1] {
+            assert_overflow(&provider, &format!("{amount} hours ago"), Language::English);
+            assert_overflow(
+                &provider,
+                &format!("{} seconds ago", amount * 3600),
+                Language::English,
+            );
+            assert_overflow(
+                &provider,
+                &format!("vor {amount} Stunden"),
+                Language::German,
+            );
+        }
+
+        let edge = ChronoProvider::at(local_instant(NaiveDateTime::MIN + TimeDelta::minutes(30)));
+        for input in ["1 hour ago", "60 minutes ago", "3600 seconds ago"] {
+            assert_overflow(&edge, input, Language::English);
+        }
+        let result = resolve(&edge, "29 minutes ago", Language::English);
+        assert_eq!(result.date_naive(), NaiveDate::MIN);
+    }
+
+    /// Two hours after 18:00 on chrono's last date is past its last UTC
+    /// instant, so "later today" stops there — still today on the wall clock.
+    #[test]
+    #[ignore = "requires TZ=America/New_York; run via us_eastern_suite"]
+    fn us_eastern_later_today_clamps_to_the_last_utc_instant() {
+        let base = local_instant(NaiveDate::MAX.and_hms_opt(18, 0, 0).unwrap());
+        let provider = ChronoProvider::at(base);
+
+        let result = resolve(&provider, "later today", Language::English);
+        assert_eq!(result, DateTime::<Utc>::MAX_UTC);
+        assert_eq!(result.date_naive(), NaiveDate::MAX);
+        assert!(result > base);
+    }
+
     // --- America/Havana: transitions at local midnight ---
 
     /// Cuba ends daylight saving at 01:00 local, so 2024-11-03 00:00–00:59
@@ -921,5 +1056,103 @@ mod zone_pinned {
                 .to_string(),
             "2011-12-29"
         );
+    }
+
+    // --- Asia/Tokyo: a fixed +09:00, east of UTC ---
+    //
+    // East of UTC the wall clock reaches `NaiveDateTime::MAX` nine hours before
+    // UTC does, so there is a band of instants chrono can hold whose local
+    // reading does not exist. `date_naive()` and `naive_local()` panic on them.
+
+    /// Sub-day offsets into that band used to come back as `Ok`, and the
+    /// caller's first `date_naive()` then panicked.
+    #[test]
+    #[ignore = "requires TZ=Asia/Tokyo; run via tokyo_suite"]
+    fn tokyo_sub_day_offsets_past_the_local_range_report_overflow() {
+        let base = instant_at_utc(2024, 6, 12, 12, 0); // 2024-06-12 21:00 JST
+        assert_eq!(base.hour(), 21, "expected 21:00 local in Asia/Tokyo");
+        let provider = ChronoProvider::at(base);
+        let hours_to_last_hour = (NaiveDateTime::MAX - base.naive_local()).num_hours();
+
+        let last = resolve(
+            &provider,
+            &format!("in {hours_to_last_hour} hours"),
+            Language::English,
+        );
+        assert_eq!(
+            last.naive_local(),
+            NaiveDate::MAX.and_hms_opt(23, 0, 0).unwrap()
+        );
+
+        // The first nine hours past the wall clock's end are still within the
+        // UTC range; the tenth is not.
+        for amount in (1..=10).map(|hours| hours_to_last_hour + hours) {
+            assert_overflow(&provider, &format!("in {amount} hours"), Language::English);
+            assert_overflow(&provider, &format!("in {amount} Stunden"), Language::German);
+            assert_overflow(
+                &provider,
+                &format!("in {} minutes", amount * 60),
+                Language::English,
+            );
+            assert_overflow(
+                &provider,
+                &format!("in {} seconds", amount * 3600),
+                Language::English,
+            );
+        }
+
+        // Half an hour before the end, even the shortest step can overflow.
+        let edge = ChronoProvider::at(local_instant(NaiveDateTime::MAX - TimeDelta::minutes(30)));
+        for input in ["later", "in 1 hour", "in 60 minutes", "in 3600 seconds"] {
+            assert_overflow(&edge, input, Language::English);
+        }
+        let result = resolve(&edge, "in 29 minutes", Language::English);
+        assert_eq!(result.date_naive(), NaiveDate::MAX);
+    }
+
+    /// At the start of the range it is UTC that runs out first east of UTC:
+    /// local midnight on `NaiveDate::MIN` is before the first UTC instant.
+    /// That is a range overflow, not a DST ambiguity.
+    #[test]
+    #[ignore = "requires TZ=Asia/Tokyo; run via tokyo_suite"]
+    fn tokyo_day_offsets_before_the_utc_range_report_overflow() {
+        let base = instant_at_utc(2024, 6, 11, 18, 0); // 2024-06-12 03:00 JST
+        assert_eq!(base.hour(), 3, "expected 03:00 local in Asia/Tokyo");
+        let provider = ChronoProvider::at(base);
+        let days_to_first_date = (base.date_naive() - NaiveDate::MIN).num_days();
+
+        let day_after = resolve(
+            &provider,
+            &format!("{} days ago", days_to_first_date - 1),
+            Language::English,
+        );
+        assert_eq!(day_after.date_naive(), NaiveDate::MIN.succ_opt().unwrap());
+
+        for amount in [days_to_first_date, days_to_first_date + 1] {
+            assert_overflow(&provider, &format!("{amount} days ago"), Language::English);
+            assert_overflow(&provider, &format!("vor {amount} Tagen"), Language::German);
+        }
+
+        // Pinned at noon on that first date, its own midnight and early hours
+        // are out of range too.
+        let provider =
+            ChronoProvider::at(local_instant(NaiveDate::MIN.and_hms_opt(12, 0, 0).unwrap()));
+        for input in ["today", "midnight", "3 am"] {
+            assert_overflow(&provider, input, Language::English);
+        }
+        assert_eq!(resolve(&provider, "noon", Language::English).hour(), 12);
+    }
+
+    /// Two hours after 23:00 on chrono's last date has no wall-clock reading,
+    /// so "later today" stops at the last instant that has one.
+    #[test]
+    #[ignore = "requires TZ=Asia/Tokyo; run via tokyo_suite"]
+    fn tokyo_later_today_clamps_to_the_last_local_instant() {
+        let base = local_instant(NaiveDate::MAX.and_hms_opt(23, 0, 0).unwrap());
+        let provider = ChronoProvider::at(base);
+
+        let result = resolve(&provider, "later today", Language::English);
+        assert_eq!(result.naive_local(), NaiveDateTime::MAX);
+        assert!(result > base);
     }
 }

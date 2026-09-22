@@ -44,12 +44,47 @@
 //!
 //! - `ParseError`: Invalid input that cannot be parsed
 //! - `DateCalculationError`: Date arithmetic that results in invalid dates
-//! - `AmbiguousTime`: Local times that are ambiguous due to DST transitions
+//! - `ArithmeticOverflow`: Results outside the range chrono can represent,
+//!   such as a relative amount of a few hundred thousand years
+//! - `AmbiguousTime`: Local times that cannot be resolved to an instant
 //! - `InvalidDate`/`InvalidTime`: Components that are out of valid ranges
 
 use chrono::{
-    DateTime, Datelike, Days, Duration, Local, Months, NaiveDateTime, TimeDelta, TimeZone, Utc,
+    DateTime, Datelike, Days, Local, Months, NaiveDateTime, NaiveTime, TimeDelta, TimeZone, Utc,
 };
+use temps_core::{
+    DayReference, Direction, Language, Result, TempsError, TimeExpression, TimeParser, TimeUnit,
+    Weekday,
+    constants::{DAYS_PER_WEEK, MONTHS_PER_YEAR},
+    errors::*,
+    time_utils::{
+        calculate_timezone_offset_seconds, calculate_weekday_offset, convert_12_to_24_hour,
+        is_valid_time, is_valid_timezone_offset,
+    },
+};
+
+/// `dt`, provided its local wall-clock reading is within chrono's range.
+///
+/// chrono range-checks only the UTC instant when it shifts a `DateTime`, so
+/// within one zone offset of either end of its range it hands back instants
+/// whose local reading is past `NaiveDateTime::MAX` or before
+/// `NaiveDateTime::MIN`. `date_naive()` and `naive_local()` panic on such a
+/// value, so none may escape as a result.
+fn local_in_range(dt: DateTime<Local>) -> Option<DateTime<Local>> {
+    dt.naive_utc().checked_add_offset(*dt.offset()).map(|_| dt)
+}
+
+/// The last instant chrono can represent in the local zone.
+///
+/// East of UTC that is where the wall clock reaches `NaiveDateTime::MAX`;
+/// west of it, UTC runs out first, while the wall clock still reads the same
+/// last date.
+fn last_local_instant() -> Result<DateTime<Local>> {
+    resolve_local(NaiveDateTime::MAX).or_else(|_| {
+        local_in_range(DateTime::<Utc>::MAX_UTC.with_timezone(&Local))
+            .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))
+    })
+}
 
 /// Resolve a naive local datetime to a concrete instant, matching the jiff
 /// backend's default `compatible` disambiguation.
@@ -74,36 +109,53 @@ use chrono::{
 ///   width; interpreting the civil time with the offset in force *before* the
 ///   gap does exactly that, and works for any width — including whole days
 ///   skipped at the date line, where a fixed-size probe would give up.
-fn resolve_local(naive: NaiveDateTime) -> Option<DateTime<Local>> {
+///
+///   chrono answers `None` as well for a local time whose instant would lie
+///   outside its range, within one zone offset of `NaiveDateTime::MAX` or
+///   `MIN`. There is no gap there to shift across, so that is reported as
+///   [`TempsError::ArithmeticOverflow`], like every other result chrono cannot
+///   represent, and [`TempsError::AmbiguousTime`] is kept for a local time
+///   that genuinely cannot be resolved.
+///
+/// Every instant returned has a local reading within chrono's range, so
+/// `date_naive()` on it cannot panic.
+fn resolve_local(naive: NaiveDateTime) -> Result<DateTime<Local>> {
     use chrono::offset::LocalResult;
-    match naive.and_local_timezone(Local) {
-        LocalResult::Single(dt) => {
-            Some(Utc.from_utc_datetime(&dt.naive_utc()).with_timezone(&Local))
+    let out_of_range = || TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE);
+
+    let resolved = match naive.and_local_timezone(Local) {
+        LocalResult::Single(dt) => Utc.from_utc_datetime(&dt.naive_utc()).with_timezone(&Local),
+        LocalResult::Ambiguous(a, b) => {
+            if a <= b {
+                a
+            } else {
+                b
+            }
         }
-        LocalResult::Ambiguous(a, b) => Some(if a <= b { a } else { b }),
         LocalResult::None => {
-            let pre_gap_offset = (1..=3).find_map(|days| {
-                naive
-                    .checked_sub_days(Days::new(days))?
-                    .and_local_timezone(Local)
-                    .earliest()
-                    .map(|dt| *dt.offset())
-            })?;
-            let utc = naive.checked_sub_offset(pre_gap_offset)?;
-            Some(Utc.from_utc_datetime(&utc).with_timezone(&Local))
+            let mut pre_gap_offset = None;
+            for days in 1..=3 {
+                // Looking back past the first date chrono can name means the
+                // time is at the start of its range, not in a gap.
+                let probe = naive
+                    .checked_sub_days(Days::new(days))
+                    .ok_or_else(out_of_range)?;
+                if let Some(dt) = probe.and_local_timezone(Local).earliest() {
+                    pre_gap_offset = Some(*dt.offset());
+                    break;
+                }
+            }
+            let pre_gap_offset =
+                pre_gap_offset.ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))?;
+            // With the offset known, only the end of the range can stop this.
+            let utc = naive
+                .checked_sub_offset(pre_gap_offset)
+                .ok_or_else(out_of_range)?;
+            Utc.from_utc_datetime(&utc).with_timezone(&Local)
         }
-    }
+    };
+    local_in_range(resolved).ok_or_else(out_of_range)
 }
-use temps_core::{
-    DayReference, Direction, Language, Result, TempsError, TimeExpression, TimeParser, TimeUnit,
-    Weekday,
-    constants::{DAYS_PER_WEEK, MONTHS_PER_YEAR},
-    errors::*,
-    time_utils::{
-        calculate_timezone_offset_seconds, calculate_weekday_offset, convert_12_to_24_hour,
-        is_valid_time, is_valid_timezone_offset,
-    },
-};
 
 /// Chrono-based implementation of the TimeParser trait.
 ///
@@ -234,9 +286,7 @@ impl TimeParser for ChronoProvider {
                         }
                         .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
 
-                        let naive = date.and_time(now.time());
-                        resolve_local(naive)
-                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
+                        resolve_local(date.and_time(now.time()))
                     }
                     _ => {
                         // Fixed-length units. Use the fallible constructors and a
@@ -254,7 +304,10 @@ impl TimeParser for ChronoProvider {
                             Direction::Past => now.checked_sub_signed(duration),
                             Direction::Future => now.checked_add_signed(duration),
                         };
+                        // chrono checks only that the UTC instant is in range;
+                        // the local wall clock can run out before it does.
                         shifted
+                            .and_then(local_in_range)
                             .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))
                     }
                 }
@@ -315,8 +368,7 @@ impl TimeParser for ChronoProvider {
                         }
                         None => {
                             // No timezone specified, treat as local time
-                            resolve_local(naive_dt)
-                                .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))?
+                            resolve_local(naive_dt)?
                         }
                     }
                 } else {
@@ -324,8 +376,7 @@ impl TimeParser for ChronoProvider {
                     let midnight = date
                         .and_hms_opt(0, 0, 0)
                         .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
-                    resolve_local(midnight)
-                        .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))?
+                    resolve_local(midnight)?
                 };
 
                 Ok(datetime)
@@ -339,7 +390,6 @@ impl TimeParser for ChronoProvider {
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
                         resolve_local(midnight)
-                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::Yesterday => {
                         let midnight = now
@@ -349,7 +399,6 @@ impl TimeParser for ChronoProvider {
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
                         resolve_local(midnight)
-                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::Tomorrow => {
                         let midnight = now
@@ -359,7 +408,6 @@ impl TimeParser for ChronoProvider {
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
                         resolve_local(midnight)
-                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::DayBeforeYesterday => {
                         let midnight = now
@@ -369,7 +417,6 @@ impl TimeParser for ChronoProvider {
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
                         resolve_local(midnight)
-                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::DayAfterTomorrow => {
                         let midnight = now
@@ -379,7 +426,6 @@ impl TimeParser for ChronoProvider {
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
                         resolve_local(midnight)
-                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                     DayReference::Weekday { day, modifier } => {
                         let target_weekday = match day {
@@ -410,7 +456,6 @@ impl TimeParser for ChronoProvider {
                             .and_hms_opt(0, 0, 0)
                             .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))?;
                         resolve_local(midnight)
-                            .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))
                     }
                 }
             }
@@ -430,8 +475,7 @@ impl TimeParser for ChronoProvider {
                     .date_naive()
                     .and_hms_opt(hour, time.minute as u32, time.second as u32)
                     .ok_or_else(|| TempsError::invalid_time(time.hour, time.minute, time.second))?;
-                Ok(resolve_local(naive)
-                    .ok_or_else(|| TempsError::ambiguous_time("Ambiguous local time"))?)
+                resolve_local(naive)
             }
             TimeExpression::DayTime(day_time) => {
                 // First get the day
@@ -468,34 +512,32 @@ impl TimeParser for ChronoProvider {
                             day_time.time.second,
                         )
                     })?;
-                Ok(resolve_local(naive)
-                    .ok_or_else(|| TempsError::ambiguous_time("Ambiguous local time"))?)
+                resolve_local(naive)
             }
             TimeExpression::LaterToday => {
                 let now = self.now();
+                // `None` when two hours on is past the end of chrono's range;
+                // the clamp below then applies.
                 let later = now
-                    .checked_add_signed(Duration::hours(2))
-                    .ok_or_else(|| TempsError::arithmetic_overflow(ERR_AMOUNT_OUT_OF_RANGE))?;
+                    .checked_add_signed(TimeDelta::hours(2))
+                    .and_then(local_in_range);
 
                 // Clamp against the true end of the local day. A fixed 23:59:59
                 // is wrong in zones where the day is cut short by a transition,
                 // and would drop sub-second precision.
-                let tomorrow = now
-                    .date_naive()
-                    .checked_add_days(Days::new(1))
-                    .and_then(|d| d.and_hms_opt(0, 0, 0))
-                    .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?;
-                let tomorrow_start = resolve_local(tomorrow)
-                    .ok_or_else(|| TempsError::ambiguous_time(ERR_AMBIGUOUS_TIME))?;
+                let last_today = match now.date_naive().succ_opt() {
+                    Some(tomorrow) => resolve_local(tomorrow.and_time(NaiveTime::MIN))?
+                        .checked_sub_signed(TimeDelta::nanoseconds(1))
+                        .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?,
+                    // chrono cannot name tomorrow, so today ends with its range.
+                    None => last_local_instant()?,
+                };
 
-                if later < tomorrow_start {
-                    return Ok(later);
-                }
-                let last_today = tomorrow_start
-                    .checked_sub_signed(TimeDelta::nanoseconds(1))
-                    .ok_or_else(|| TempsError::date_calculation(ERR_DATE_CALC_INVALID))?;
+                // Compare instants, not dates: `later` may be on a date chrono
+                // cannot name.
+                let clamped = later.map_or(last_today, |later| later.min(last_today));
                 // Never resolve into the past.
-                Ok(if last_today < now { now } else { last_today })
+                Ok(clamped.max(now))
             }
             TimeExpression::Date(date) => {
                 use chrono::NaiveDate;
@@ -504,10 +546,7 @@ impl TimeParser for ChronoProvider {
                     .ok_or_else(|| TempsError::invalid_date(date.year, date.month, date.day))?
                     .and_hms_opt(0, 0, 0)
                     .ok_or_else(|| TempsError::date_calculation(ERR_MIDNIGHT_FAILED))
-                    .and_then(|naive| {
-                        resolve_local(naive)
-                            .ok_or_else(|| TempsError::ambiguous_time("Ambiguous local time"))
-                    })
+                    .and_then(resolve_local)
             }
         }
     }
@@ -549,7 +588,9 @@ impl TimeParser for ChronoProvider {
 /// This function will return an error if:
 /// - The input cannot be parsed as a valid time expression
 /// - Date calculation results in an invalid date
-/// - The resulting time is ambiguous due to DST transitions
+/// - The result is outside the range chrono can represent
+///   ([`TempsError::ArithmeticOverflow`])
+/// - The resulting local time cannot be resolved to an instant
 pub fn parse_to_datetime(input: &str, language: Language) -> Result<DateTime<Local>> {
     let expr = temps_core::parse(input, language)?;
     ChronoProvider::new().parse_expression(expr)
