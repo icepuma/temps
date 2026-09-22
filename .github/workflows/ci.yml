@@ -5,6 +5,7 @@ on:
       - "main"
   pull_request:
 jobs:
+  # Mirrors `just check`: format, lint, test, doc-test, examples.
   build:
     runs-on: ubuntu-latest
     env:
@@ -15,8 +16,15 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
-      - run: cargo fmt -- --check && cargo clippy --locked -- -Dwarnings
-      - run: cargo nextest run --locked --all-features
+      - run: cargo fmt --all -- --check
+      # Lint every target (tests, examples) with every feature, so the feature-gated facade
+      # modules and the test suites are covered too.
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -Dwarnings
+      - run: cargo nextest run --locked --workspace --all-features
+      # nextest does not run doctests; this also compiles and runs the README's code blocks.
+      - run: cargo test --doc --locked --workspace --all-features
+      - run: cargo run --locked --example chrono_example --features chrono
+      - run: cargo run --locked --example jiff_example --features jiff
 
   msrv:
     runs-on: ubuntu-latest

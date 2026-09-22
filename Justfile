@@ -5,9 +5,9 @@ default: check
 format:
     cargo fmt --all
 
-# Run clippy on workspace including examples
+# Run clippy on every target (tests, examples) with every feature; warnings fail the recipe
 lint:
-    cargo clippy --workspace --tests --examples --all-features --all-targets
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Run all tests with nextest
 test:
