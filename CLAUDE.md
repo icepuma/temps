@@ -4,12 +4,25 @@ This document provides guidelines for Claude when working on the temps codebase.
 
 ## Project Structure
 
-This is a Rust workspace project (edition 2024, resolver 3, MSRV 1.88) with five crates:
+This is a Rust workspace project (edition 2024, resolver 3, MSRV 1.88) with five published
+crates and one unpublished check crate:
 - `temps-core` - Lexer, grammar and language-independent types. Depends only on `chumsky` (parsing), `ariadne` (diagnostics) and `thiserror`
 - `temps-chrono` - Chrono integration for time operations
 - `temps-jiff` - Jiff integration for time operations
 - `temps-testhelpers` - Shared mocks/helpers, used only as a dev-dependency
 - `temps` - Main crate that re-exports functionality from the sub-crates
+- `readme-check/` (package `temps-readme-check`, `publish = false`, `release = false` in
+  `release-plz.toml`) - compiles and runs the root `README.md`'s Rust blocks as doctests under
+  `just doc-test`. Its only dependency is `temps` with both features, which is what a user
+  following the README has, so a snippet that imports anything else (such as `temps_core`) fails.
+  Do not give it more dependencies unless the README tells users to add them too, and do not
+  `include_str!` the README from a published crate: the README is outside every crate's package,
+  so the published tarball's doctests would fail to build
+
+Third-party dependencies are caret requirements floored at the oldest release the workspace
+builds and passes its tests with, never exact `=` pins (see the comment in the root `Cargo.toml`).
+The `minimal-versions` CI job tests those floors, so raise a floor in the same change that starts
+needing a newer release. `Cargo.lock` stays at the newest versions.
 
 ## Development Workflow
 
@@ -123,17 +136,17 @@ and remember that a space inside a `phrase_ci` pattern requires one in the input
 
 The `just check` command performs the following in order:
 1. `just format` - Runs `cargo fmt --all` to format all code
-2. `just lint` - Runs `cargo clippy --workspace --tests --examples --all-features --all-targets` for clippy checks
+2. `just lint` - Runs `cargo clippy --workspace --all-targets --all-features -- -D warnings`, so any clippy or compiler warning fails it
 3. `just test` - Runs `cargo nextest run --workspace --all-features` for all tests
-4. `just doc-test` - Runs `cargo test --doc --workspace --all-features` (nextest does not run doctests)
+4. `just doc-test` - Runs `cargo test --doc --workspace --all-features` (nextest does not run doctests), including the README blocks through `temps-readme-check`
 5. `just examples` - Runs both chrono and jiff examples to ensure they compile and execute
 
 Available Just commands:
 - `just` or `just check` - Run complete check (format, lint, test, doc-test, examples)
 - `just format` - Format all code
-- `just lint` - Run clippy checks
+- `just lint` - Run clippy on every target with every feature, denying warnings
 - `just test` - Run all tests with nextest
-- `just doc-test` - Run doctests only
+- `just doc-test` - Run doctests only (crate docs and the README)
 - `just examples` - Run all examples
 - `just example-chrono` - Run chrono example only
 - `just example-jiff` - Run jiff example only
@@ -143,7 +156,8 @@ Available Just commands:
 ## Important Notes
 
 - This is a library project - avoid creating unnecessary binaries or examples
-- All crates share workspace-level package metadata; the two examples live in `examples/` and are
-  wired up as `[[example]]` targets of the `temps` crate
+- All crates share workspace-level package metadata (`temps-readme-check` keeps its own
+  `version = "0.0.0"`); the two examples live in `examples/` and are wired up as `[[example]]`
+  targets of the `temps` crate
 - Always verify changes work by running `just check`
 - Never commit code without running `just check` first
