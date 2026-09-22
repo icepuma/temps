@@ -61,23 +61,28 @@ pub enum TempsError {
     /// such as when adding months to January 31st would result in
     /// February 31st (which doesn't exist).
     ///
+    /// It displays as `Date calculation error: {message}`, followed by
+    /// `: {context}` when a context is present.
+    ///
     /// # Example
     ///
     /// ```
     /// use temps_core::TempsError;
     ///
     /// let err = TempsError::date_calculation("Month overflow");
+    /// assert_eq!(err.to_string(), "Date calculation error: Month overflow");
     /// ```
-    #[error("Date calculation error: {message}")]
+    #[error("Date calculation error: {message}{}", format_context(context.as_deref()))]
     DateCalculationError {
         /// The specific calculation error message
         message: String,
-        /// Optional context about what caused the error
+        /// Optional context about what caused the error, such as the
+        /// backend's own error message; rendered after `message`
         context: Option<String>,
     },
 
     /// Error for invalid date components
-    #[error("Invalid date: year={year}, month={month}, day={day}")]
+    #[error("{}", crate::errors::format_invalid_date(*year, *month, *day))]
     InvalidDate {
         /// The year component
         year: u16,
@@ -88,7 +93,7 @@ pub enum TempsError {
     },
 
     /// Error for invalid time components
-    #[error("Invalid time: {hour:02}:{minute:02}:{second:02}")]
+    #[error("{}", crate::errors::format_invalid_time(*hour, *minute, *second))]
     InvalidTime {
         /// The hour component (0-23)
         hour: u8,
@@ -99,7 +104,7 @@ pub enum TempsError {
     },
 
     /// Error for invalid timezone offset
-    #[error("{}", temps_core_format_offset(*total_minutes))]
+    #[error("{}", crate::errors::format_invalid_timezone_offset(*total_minutes))]
     InvalidTimezoneOffset {
         /// The offset from UTC in minutes (-720 to +840)
         total_minutes: i16,
@@ -225,6 +230,9 @@ impl TempsError {
     ///
     /// Use this when you want to include information about what caused
     /// the calculation to fail (e.g., an error from the backend library).
+    /// The context is kept in the `context` field and is also part of the
+    /// error's `Display`, after the message. It is plain text, not a chained
+    /// [`std::error::Error::source`].
     ///
     /// # Example
     ///
@@ -233,7 +241,11 @@ impl TempsError {
     ///
     /// let err = TempsError::date_calculation_with_source(
     ///     "Failed to add months",
-    ///     "chronos error: date out of range"
+    ///     "chrono error: date out of range"
+    /// );
+    /// assert_eq!(
+    ///     err.to_string(),
+    ///     "Date calculation error: Failed to add months: chrono error: date out of range"
     /// );
     /// ```
     #[must_use]
@@ -464,9 +476,12 @@ fn format_rich(err: &chumsky::error::Rich<'_, crate::lexer::Token<'_>>) -> (Stri
     }
 }
 
-/// Render an offset for [`TempsError::InvalidTimezoneOffset`]'s `Display`.
-fn temps_core_format_offset(total_minutes: i16) -> String {
-    crate::errors::format_invalid_timezone_offset(total_minutes)
+/// Render the optional context of [`TempsError::DateCalculationError`] for its
+/// `Display`: `": {context}"`, or nothing.
+fn format_context(context: Option<&str>) -> String {
+    context
+        .map(|context| format!(": {context}"))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -506,6 +521,54 @@ mod tests {
                 assert_eq!(backend, "chrono");
             }
             _ => panic!("Wrong error type"),
+        }
+    }
+
+    /// A context is the cause a backend reported, so it belongs in the text a
+    /// caller logs, not only in `Debug`.
+    #[test]
+    fn date_calculation_display_carries_the_context() {
+        let err = TempsError::date_calculation_with_source(
+            "Failed to add months",
+            "chrono error: date out of range",
+        );
+        assert_eq!(
+            err.to_string(),
+            "Date calculation error: Failed to add months: chrono error: date out of range"
+        );
+
+        let err = TempsError::date_calculation("Month overflow");
+        assert_eq!(err.to_string(), "Date calculation error: Month overflow");
+    }
+
+    /// The public `errors::format_*` helpers are the text of the matching
+    /// `TempsError` variant, not a second spelling of it.
+    #[test]
+    fn error_helpers_render_exactly_the_display_text() {
+        use crate::errors::{
+            format_invalid_date, format_invalid_time, format_invalid_timezone_offset,
+        };
+
+        for (year, month, day) in [(2024, 13, 32), (1, 2, 3), (0, 0, 0), (u16::MAX, 255, 255)] {
+            assert_eq!(
+                format_invalid_date(year, month, day),
+                TempsError::invalid_date(year, month, day).to_string()
+            );
+        }
+
+        for (hour, minute, second) in [(9, 5, 3), (25, 61, 61), (0, 0, 0), (255, 255, 255)] {
+            assert_eq!(
+                format_invalid_time(hour, minute, second),
+                TempsError::invalid_time(hour, minute, second).to_string()
+            );
+        }
+        assert_eq!(format_invalid_time(9, 5, 3), "Invalid time: 09:05:03");
+
+        for total_minutes in [-30, 0, 90, -720, 840, i16::MIN, i16::MAX] {
+            assert_eq!(
+                format_invalid_timezone_offset(total_minutes),
+                TempsError::invalid_timezone_offset(total_minutes).to_string()
+            );
         }
     }
 

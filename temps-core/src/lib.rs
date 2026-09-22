@@ -580,19 +580,39 @@ pub mod errors {
     /// Error message for negative relative amounts
     pub const ERR_RELATIVE_AMOUNT_NON_NEGATIVE: &str = "Relative amount must be non-negative";
 
-    /// Format error message for invalid date with components
+    /// Format error message for invalid date with components.
+    ///
+    /// This is the `Display` of [`TempsError::InvalidDate`](crate::TempsError::InvalidDate).
+    ///
+    /// ```
+    /// use temps_core::errors::format_invalid_date;
+    ///
+    /// assert_eq!(format_invalid_date(2024, 13, 32), "Invalid date: year=2024, month=13, day=32");
+    /// ```
     #[must_use]
     pub fn format_invalid_date(year: u16, month: u8, day: u8) -> String {
-        format!("Invalid date: {year}-{month}-{day}")
+        format!("Invalid date: year={year}, month={month}, day={day}")
     }
 
-    /// Format error message for invalid time with components
+    /// Format error message for invalid time with components, each field
+    /// zero-padded to two digits.
+    ///
+    /// This is the `Display` of [`TempsError::InvalidTime`](crate::TempsError::InvalidTime).
+    ///
+    /// ```
+    /// use temps_core::errors::format_invalid_time;
+    ///
+    /// assert_eq!(format_invalid_time(9, 5, 3), "Invalid time: 09:05:03");
+    /// ```
     #[must_use]
     pub fn format_invalid_time(hour: u8, minute: u8, second: u8) -> String {
-        format!("Invalid time: {hour}:{minute}:{second}")
+        format!("Invalid time: {hour:02}:{minute:02}:{second:02}")
     }
 
     /// Format error message for invalid timezone offset
+    ///
+    /// This is the `Display` of
+    /// [`TempsError::InvalidTimezoneOffset`](crate::TempsError::InvalidTimezoneOffset).
     #[must_use]
     pub fn format_invalid_timezone_offset(total_minutes: i16) -> String {
         let sign = if total_minutes < 0 { '-' } else { '+' };
