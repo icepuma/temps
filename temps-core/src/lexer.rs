@@ -32,15 +32,18 @@ pub enum Token<'a> {
     /// A combining diacritical mark (U+0300..=U+036F and the other Combining
     /// Diacritical Marks blocks) continues the run it follows, so a decomposed
     /// (NFD) `u\u{308}bermorgen` — `u` then U+0308 COMBINING DIAERESIS — is one
-    /// word, just like its precomposed (NFC) spelling. The slice is the input
-    /// exactly as written; keyword matching composes the German umlauts itself
-    /// (see [`word_ci`](crate::common::word_ci)).
+    /// word, just like its precomposed (NFC) spelling. A mark never starts a
+    /// word, not even one that Unicode calls alphabetic, such as U+036F
+    /// COMBINING LATIN SMALL LETTER X: a word starts on a letter. The slice is
+    /// the input exactly as written; keyword matching composes the German
+    /// umlauts itself (see [`word_ci`](crate::common::word_ci)).
     Word(&'a str),
     /// A maximal run of ASCII digits, kept as text to preserve width.
     Number(&'a str),
-    /// A single character that is not alphabetic, an ASCII digit or
-    /// whitespace, and does not continue a [`Token::Word`]: a combining mark
-    /// is a `Punct` only when no letter comes before it.
+    /// A single character that is not a letter, an ASCII digit or whitespace,
+    /// and does not continue a [`Token::Word`]. A combining mark is no letter,
+    /// even where Unicode calls it alphabetic, so it is a `Punct` unless it
+    /// follows a word.
     Punct(char),
     /// A run of whitespace.
     ///
@@ -122,9 +125,14 @@ enum CharKind {
 }
 
 /// The kind of token a run starting with `c` becomes.
+///
+/// A combining mark is [`CharKind::Punct`] here even where it is alphabetic:
+/// it can only continue a word, which [`lex`] sees to, never start one.
 fn char_kind(c: char) -> CharKind {
     if c.is_whitespace() {
         CharKind::Space
+    } else if is_combining_mark(c) {
+        CharKind::Punct
     } else if c.is_alphabetic() {
         CharKind::Word
     } else if c.is_ascii_digit() {
@@ -135,13 +143,15 @@ fn char_kind(c: char) -> CharKind {
 }
 
 /// Whether `c` is a combining diacritical mark, which belongs to the letter
-/// before it rather than starting a token of its own.
+/// before it: it continues a word, but never starts one.
 ///
 /// `char::is_alphabetic` is false for most such marks — U+0308 COMBINING
 /// DIAERESIS, the one NFD German needs, is `Mn` but not `Alphabetic` — so
-/// without this a decomposed umlaut would split its word in two. std has no
-/// general-category query and this crate carries no Unicode tables, so these
-/// are the five Combining Diacritical Marks blocks, spelled out.
+/// without this a decomposed umlaut would split its word in two. A few are
+/// `Alphabetic`, U+0345 and U+0363..=U+036F among them, and without this
+/// would start a word with no letter in it. std has no general-category query
+/// and this crate carries no Unicode tables, so these are the five Combining
+/// Diacritical Marks blocks, spelled out.
 pub(crate) fn is_combining_mark(c: char) -> bool {
     matches!(
         c,
@@ -212,6 +222,42 @@ mod tests {
             kinds("5\u{308}"),
             vec![Token::Number("5"), Token::Punct('\u{308}')]
         );
+    }
+
+    /// Some combining marks are `Alphabetic`, such as U+036F COMBINING LATIN
+    /// SMALL LETTER X, and used to start a word of their own. A mark belongs to
+    /// the letter before it, so without one it is punctuation, whatever its
+    /// Unicode properties.
+    #[test]
+    fn a_combining_mark_never_starts_a_word() {
+        let marks: Vec<char> = ('\0'..=char::MAX)
+            .filter(|&c| is_combining_mark(c))
+            .collect();
+        assert!(
+            marks.iter().any(|c| c.is_alphabetic()),
+            "the blocks hold Alphabetic marks, which is what this test is about"
+        );
+
+        for mark in marks {
+            let alone = mark.to_string();
+            assert_eq!(kinds(&alone), vec![Token::Punct(mark)], "{mark:?}");
+            let after_digit = format!("5{mark}");
+            assert_eq!(
+                kinds(&after_digit),
+                vec![Token::Number("5"), Token::Punct(mark)],
+                "{mark:?}"
+            );
+            let before_word = format!(" {mark}xy");
+            assert_eq!(
+                kinds(&before_word),
+                vec![Token::Space, Token::Punct(mark), Token::Word("xy")],
+                "{mark:?}"
+            );
+
+            // After a letter, it continues that letter's word.
+            let inside = format!("x{mark}y{mark}");
+            assert_eq!(kinds(&inside), vec![Token::Word(&inside)], "{mark:?}");
+        }
     }
 
     #[test]

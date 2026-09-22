@@ -924,10 +924,11 @@ pub mod common {
     ///
     /// The lexer emits every character that is not alphabetic, an ASCII digit
     /// or whitespace as its own [`Token::Punct`], so this is the token-level
-    /// `just(':')`. The exception is a combining mark that continues a word,
-    /// such as the U+0308 of a decomposed `u\u{308}`: it stays inside that
-    /// [`Token::Word`] and never reaches `punct`. A mark with no letter before
-    /// it is a `Punct` like any other.
+    /// `just(':')`. Combining marks are the exception both ways. A mark that
+    /// continues a word, such as the U+0308 of a decomposed `u\u{308}`, stays
+    /// inside that [`Token::Word`] and never reaches `punct`. A mark that
+    /// follows no word is a `Punct` like any other, even one that Unicode
+    /// calls alphabetic, such as U+036F.
     pub fn punct<'t, 's: 't, I>(c: char) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
     where
         I: TokenInput<'t, 's>,
