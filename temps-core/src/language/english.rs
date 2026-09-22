@@ -4,10 +4,11 @@ use crate::{
     DayReference, DayTime, Direction, LanguageParser, Meridiem, RelativeTime, Result, StandardDate,
     Time, TimeExpression, TimeUnit, Weekday, WeekdayModifier,
     common::{
-        ParserError, TokenInput, digit_number, four_digit_number, iso_datetime, opt_space,
-        phrase_ci, phrases_ci, punct, space, token_stream, two_digit_number, word_ci,
+        ParserError, TokenInput, digit_number, exactly_two_digit_number, four_digit_number,
+        iso_datetime, opt_space, phrase_ci, phrases_ci, punct, space, token_stream,
+        two_digit_number, word_ci,
     },
-    error::rich_errors_to_temps_error,
+    error::rich_errors_to_temps_error_with_empty_hint,
     lexer::lex,
     time_utils,
 };
@@ -237,10 +238,12 @@ fn time_with_minutes<'t, 's: 't, I>()
 where
     I: TokenInput<'t, 's>,
 {
+    // The hour may drop its leading zero (`3:30 pm`); the minute and second
+    // are fixed-width, so `10:5` is rejected rather than guessed at.
     two_digit_number()
         .then_ignore(punct(':'))
-        .then(two_digit_number())
-        .then(punct(':').ignore_then(two_digit_number()).or_not())
+        .then(exactly_two_digit_number())
+        .then(punct(':').ignore_then(exactly_two_digit_number()).or_not())
         .then(opt_space().ignore_then(meridiem()).or_not())
         .try_map(|(((hour, minute), second), mer), span| {
             let second = second.unwrap_or(0);
@@ -689,12 +692,19 @@ where
     .then_ignore(end())
 }
 
+/// What empty (or whitespace-only) input is told to try instead; every
+/// backticked example must parse in English, which a regression test checks.
+const EMPTY_INPUT_HINT: &str =
+    "input is empty; expected a time expression like `now`, `in 5 minutes`, or an ISO date";
+
 impl LanguageParser for EnglishParser {
     fn parse(&self, input: &str) -> Result<TimeExpression> {
         let tokens = lex(input);
         parser()
             .parse(token_stream(input, &tokens))
             .into_result()
-            .map_err(|errs| rich_errors_to_temps_error(input, errs))
+            .map_err(|errs| {
+                rich_errors_to_temps_error_with_empty_hint(input, errs, EMPTY_INPUT_HINT)
+            })
     }
 }

@@ -151,3 +151,51 @@ fn the_english_parser_does_not_learn_them() {
     assert!(parse("übermorgen", Language::English).is_err());
     assert!(parse("vorgestern", Language::English).is_err());
 }
+
+// ===== Decomposed (NFD) spellings =====
+
+/// An umlaut can reach the parser precomposed (`ü`, U+00FC — NFC) or as its
+/// base vowel followed by U+0308 COMBINING DIAERESIS (NFD), which is what
+/// macOS file names, `normalize('NFD')` and some PDF copy-paste produce. The
+/// two render identically, so they must parse identically. The lexer used to
+/// end the word at the combining mark, so every NFD keyword was rejected.
+#[test]
+fn decomposed_umlauts_parse_like_precomposed_ones() {
+    for (nfd, nfc) in [
+        ("u\u{308}bermorgen", "übermorgen"),
+        ("U\u{308}bermorgen", "Übermorgen"),
+        ("U\u{308}BERMORGEN", "ÜBERMORGEN"),
+        ("u\u{308}bermorgen um 15:30", "übermorgen um 15:30"),
+        ("na\u{308}chsten Montag", "nächsten Montag"),
+        ("NA\u{308}CHSTEN Montag", "NÄCHSTEN Montag"),
+        ("Na\u{308}chste Mo", "Nächste Mo"),
+        ("in fu\u{308}nf Tagen", "in fünf Tagen"),
+        ("vor fu\u{308}nf Tagen", "vor fünf Tagen"),
+    ] {
+        assert_ne!(nfd, nfc, "the NFD spelling must really be decomposed");
+        assert_eq!(parse_de(nfd), parse_de(nfc), "mismatch for {nfd:?}");
+    }
+}
+
+/// Composing the diaeresis does not loosen case sensitivity: `fünf` is
+/// matched case-sensitively, decomposed or not.
+#[test]
+fn decomposed_umlauts_keep_the_keywords_case_rules() {
+    assert!(parse("in Fu\u{308}nf Tagen", Language::German).is_err());
+    assert!(parse("in Fünf Tagen", Language::German).is_err());
+}
+
+/// Only a combining mark that composes into a keyword's letter is folded. Any
+/// other accent makes a different word, which is rejected — and, because the
+/// mark no longer splits the word, the diagnostic names the whole word rather
+/// than the fragment before the mark.
+#[test]
+fn another_combining_mark_is_a_different_word() {
+    let input = "mo\u{301}rgen";
+    match parse(input, Language::German) {
+        Err(temps_core::TempsError::ParseError { message, .. }) => {
+            assert!(message.contains(&format!("`{input}`")), "{message}");
+        }
+        other => panic!("{input:?} must not parse, got {other:?}"),
+    }
+}

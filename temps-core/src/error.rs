@@ -331,12 +331,37 @@ pub type Result<T> = std::result::Result<T, TempsError>;
 /// into the original source — see [`crate::lexer::lex`]. That is exactly what
 /// the byte-to-character translation below needs, and it is why umlaut input
 /// still gets a caret in the right place.
+///
+/// Empty input, and input that is nothing but whitespace (which every grammar
+/// pads away, so it is empty to them too), gets a short language-neutral
+/// message at position 0 instead of a report with nothing to underline. The
+/// built-in language parsers give their own, localized message that names
+/// example inputs of their language.
 #[must_use]
 pub fn rich_errors_to_temps_error(
     input: &str,
     errors: Vec<chumsky::error::Rich<'_, crate::lexer::Token<'_>>>,
 ) -> TempsError {
+    rich_errors_to_temps_error_with_empty_hint(
+        input,
+        errors,
+        "input is empty; expected a time expression",
+    )
+}
+
+/// [`rich_errors_to_temps_error`], with `empty_hint` as the message for empty
+/// or whitespace-only input, so that a language parser can suggest inputs its
+/// own grammar accepts.
+pub(crate) fn rich_errors_to_temps_error_with_empty_hint(
+    input: &str,
+    errors: Vec<chumsky::error::Rich<'_, crate::lexer::Token<'_>>>,
+    empty_hint: &str,
+) -> TempsError {
     use ariadne::{Color, Config, Label, Report, ReportKind, Source};
+
+    if crate::lexer::is_blank(input) {
+        return TempsError::parse_error_with_position(empty_hint, input, 0);
+    }
 
     // Token spans are BYTE offsets, but ariadne's `Source` indexes by
     // CHARACTER. Feeding one to the other mislocates the caret on any
@@ -349,14 +374,6 @@ pub fn rich_errors_to_temps_error(
             .unwrap_or_else(|| input.chars().count())
     };
     let char_len = input.chars().count();
-
-    if input.is_empty() {
-        return TempsError::parse_error_with_position(
-            "input is empty; expected a time expression like `now`, `in 5 minutes`, or an ISO date",
-            input,
-            0,
-        );
-    }
 
     let position = errors
         .first()
@@ -534,15 +551,21 @@ mod tests {
 
     #[test]
     fn empty_input_gets_a_dedicated_message() {
-        let err = rich_errors_to_temps_error("", Vec::new());
-        match err {
-            TempsError::ParseError {
-                message, position, ..
-            } => {
-                assert_eq!(position, Some(0));
-                assert!(message.contains("input is empty"), "{message}");
+        // Whitespace-only input is empty to the grammar, so it counts too.
+        for input in ["", " ", "\t\n", "\u{a0}"] {
+            match rich_errors_to_temps_error(input, Vec::new()) {
+                TempsError::ParseError {
+                    message, position, ..
+                } => {
+                    assert_eq!(position, Some(0), "{input:?}");
+                    // The fallback knows no language, so it names no examples.
+                    assert_eq!(
+                        message, "input is empty; expected a time expression",
+                        "{input:?}"
+                    );
+                }
+                other => panic!("expected a parse error for {input:?}, got {other:?}"),
             }
-            other => panic!("expected a parse error, got {other:?}"),
         }
     }
 }

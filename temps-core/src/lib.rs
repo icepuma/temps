@@ -890,6 +890,11 @@ pub mod common {
     /// Matching is whole-slice: `word_ci("day")` never matches `days`, and
     /// `word_ci("m")` never matches `min`, whatever order alternatives appear
     /// in. Use [`phrase_ci`] for anything containing a space or punctuation.
+    ///
+    /// A decomposed (NFD) umlaut — `a`, `o` or `u` (or a capital) followed by
+    /// U+0308 COMBINING DIAERESIS — compares equal to its precomposed letter,
+    /// so `word_ci("nächsten")` also accepts `na\u{308}chsten`. No other
+    /// normalisation is applied; `ß` has no decomposition to fold.
     pub fn word_ci<'t, 's: 't, I>(
         target: &'static str,
     ) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
@@ -903,26 +908,55 @@ pub mod common {
     ///
     /// For languages where capitalisation carries meaning — German nouns
     /// (`Tagen`, `Montag`) and the ISO 8601 `T` and `Z` designators.
+    ///
+    /// Like [`word_ci`], a decomposed umlaut compares equal to its
+    /// precomposed letter: `word_cs("fünf")` accepts `fu\u{308}nf`, and still
+    /// rejects `Fünf` however it is encoded.
     pub fn word_cs<'t, 's: 't, I>(
         target: &'static str,
     ) -> impl Parser<'t, I, (), ParserError<'t, 's>> + Clone
     where
         I: TokenInput<'t, 's>,
     {
-        select! { Token::Word(word) if word == target => () }.labelled(target)
+        select! { Token::Word(word) if composed(word).eq(composed(target)) => () }.labelled(target)
     }
 
-    /// Compare two strings for equality under Unicode simple lowercase folding.
+    /// Compare two strings for equality under Unicode simple lowercase folding,
+    /// after [`composed`].
     fn eq_ignore_case(a: &str, b: &str) -> bool {
-        let mut a = a.chars().flat_map(char::to_lowercase);
-        let mut b = b.chars().flat_map(char::to_lowercase);
-        loop {
-            match (a.next(), b.next()) {
-                (None, None) => return true,
-                (x, y) if x == y => (),
-                _ => return false,
-            }
-        }
+        composed(a)
+            .flat_map(char::to_lowercase)
+            .eq(composed(b).flat_map(char::to_lowercase))
+    }
+
+    /// The characters of `s`, with every decomposed German umlaut composed into
+    /// its precomposed letter: `a`/`o`/`u`/`A`/`O`/`U` directly followed by
+    /// U+0308 COMBINING DIAERESIS become `ä`/`ö`/`ü`/`Ä`/`Ö`/`Ü`.
+    ///
+    /// The lexer keeps such a mark inside its word, so this is all it takes for
+    /// NFD input to match the keyword tables, whose only non-ASCII letters are
+    /// those umlauts. It is deliberately not a general NFC pass, which would
+    /// need Unicode tables this crate does not carry.
+    fn composed(s: &str) -> impl Iterator<Item = char> + '_ {
+        const COMBINING_DIAERESIS: char = '\u{308}';
+        let mut chars = s.chars().peekable();
+        std::iter::from_fn(move || {
+            let c = chars.next()?;
+            let umlaut = match c {
+                'a' => 'ä',
+                'o' => 'ö',
+                'u' => 'ü',
+                'A' => 'Ä',
+                'O' => 'Ö',
+                'U' => 'Ü',
+                _ => return Some(c),
+            };
+            Some(if chars.next_if_eq(&COMBINING_DIAERESIS).is_some() {
+                umlaut
+            } else {
+                c
+            })
+        })
     }
 
     // ----- Phrases -----
@@ -1074,6 +1108,12 @@ pub mod common {
 
     /// Parse a 1 or 2 digit [`Token::Number`] as a `u8`.
     ///
+    /// For the fields people write with or without a leading zero: a clock
+    /// hour (`9:45`, `3 pm`) and the day and month of a dotted or slashed date
+    /// (`1.12.2023`, `1/1/2023`). A field that is always two digits wide — a
+    /// clock minute or second, any ISO 8601 field — takes
+    /// [`exactly_two_digit_number`] instead.
+    ///
     /// The width check is what makes `123:45` fail: the lexer produces a single
     /// `Number("123")` token, which cannot be split into `12` plus a leftover
     /// `3`, so no alternative can quietly consume part of it.
@@ -1088,6 +1128,26 @@ pub mod common {
                     .map_err(|e| Rich::custom(span, e.to_string()))
             },
         )
+    }
+
+    /// Parse an exactly-2-digit [`Token::Number`] as a `u8`.
+    ///
+    /// For fixed-width fields: the minute and second of a clock time, and the
+    /// month, day, hour, minute, second and offset fields of ISO 8601. `10:5`
+    /// is rejected rather than read as `10:05` — `10:50` may have been meant —
+    /// and `2024-1-5` is not ISO 8601.
+    pub fn exactly_two_digit_number<'t, 's: 't, I>()
+    -> impl Parser<'t, I, u8, ParserError<'t, 's>> + Clone
+    where
+        I: TokenInput<'t, 's>,
+    {
+        select! { Token::Number(digits) if digits.len() == 2 => digits }
+            .try_map(|digits: &str, span| {
+                digits
+                    .parse::<u8>()
+                    .map_err(|e| Rich::custom(span, e.to_string()))
+            })
+            .labelled("2-digit number")
     }
 
     /// Parse an exactly-4-digit [`Token::Number`] as a `u16`.
@@ -1111,8 +1171,8 @@ pub mod common {
         I: TokenInput<'t, 's>,
     {
         select! { Token::Punct(sign) if sign == '+' || sign == '-' => sign }
-            .then(two_digit_number())
-            .then(punct(':').ignore_then(two_digit_number()).or_not())
+            .then(exactly_two_digit_number())
+            .then(punct(':').ignore_then(exactly_two_digit_number()).or_not())
             .try_map(|((sign, hours), minutes), span| {
                 let minutes = minutes.unwrap_or(0);
                 if minutes > 59 {
@@ -1164,6 +1224,9 @@ pub mod common {
     /// - With timezone: `2024-01-15T14:30:00Z`
     /// - With offset: `2024-01-15T14:30:00+02:00`
     /// - With fractional seconds: `2024-01-15T14:30:00.123Z`
+    ///
+    /// Every field after the year is exactly two digits wide, as ISO 8601
+    /// requires: `2024-1-5`, `2024-01-15T9:30` and `+2` are rejected.
     pub fn iso_datetime<'t, 's: 't, I>()
     -> impl Parser<'t, I, TimeExpression, ParserError<'t, 's>> + Clone
     where
@@ -1171,9 +1234,9 @@ pub mod common {
     {
         let date = four_digit_number()
             .then_ignore(punct('-'))
-            .then(two_digit_number())
+            .then(exactly_two_digit_number())
             .then_ignore(punct('-'))
-            .then(two_digit_number())
+            .then(exactly_two_digit_number())
             .try_map(|((year, month), day), span| {
                 if time_utils::is_valid_calendar_date(year, month, day) {
                     Ok((year, month, day))
@@ -1187,12 +1250,12 @@ pub mod common {
         let separator = choice((word_cs("T"), space()));
 
         let time = separator
-            .ignore_then(two_digit_number())
+            .ignore_then(exactly_two_digit_number())
             .then_ignore(punct(':'))
-            .then(two_digit_number())
+            .then(exactly_two_digit_number())
             .then(
                 punct(':')
-                    .ignore_then(two_digit_number())
+                    .ignore_then(exactly_two_digit_number())
                     .then(punct('.').ignore_then(fractional_seconds()).or_not())
                     .or_not(),
             )
@@ -1281,6 +1344,24 @@ pub mod common {
             assert!(run!("montag", word_cs("Montag")).is_none());
         }
 
+        /// NFD spells `ä` as `a` + U+0308 COMBINING DIAERESIS; keyword
+        /// matching composes it back, in either case mode, without loosening
+        /// the case rules or accepting any other mark.
+        #[test]
+        fn keywords_match_decomposed_umlauts() {
+            assert!(run!("na\u{308}chsten", word_ci("nächsten")).is_some());
+            assert!(run!("NA\u{308}CHSTEN", word_ci("nächsten")).is_some());
+            assert!(run!("u\u{308}bermorgen", word_ci("übermorgen")).is_some());
+            assert!(run!("fu\u{308}nf", word_cs("fünf")).is_some());
+            assert!(run!("Fu\u{308}nf", word_cs("fünf")).is_none());
+            // Only the diaeresis composes into these letters.
+            assert!(run!("fu\u{301}nf", word_cs("fünf")).is_none());
+            assert!(run!("fu\u{308}\u{308}nf", word_cs("fünf")).is_none());
+            // ASCII keywords are untouched by the composition.
+            assert!(run!("tomorrow", word_ci("tomorrow")).is_some());
+            assert!(run!("o\u{308}", word_ci("o")).is_none());
+        }
+
         #[test]
         fn phrases_span_spaces_and_punctuation() {
             assert!(run!("day after tomorrow", phrase_ci("day after tomorrow")).is_some());
@@ -1304,6 +1385,10 @@ pub mod common {
             assert_eq!(run!("07", two_digit_number()), Some(7));
             // A 3-digit number is one token and cannot be truncated to two.
             assert_eq!(run!("123", two_digit_number()), None);
+            // A fixed-width field takes neither a short nor a long token.
+            assert_eq!(run!("07", exactly_two_digit_number()), Some(7));
+            assert_eq!(run!("7", exactly_two_digit_number()), None);
+            assert_eq!(run!("007", exactly_two_digit_number()), None);
             assert_eq!(run!("2024", four_digit_number()), Some(2024));
             assert_eq!(run!("204", four_digit_number()), None);
             assert_eq!(run!("12345", digit_number()), Some(12345));
