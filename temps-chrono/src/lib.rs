@@ -50,12 +50,30 @@
 //!   one), or a time of day that is out of range on one of those dates. A
 //!   provider pinned with [`ChronoProvider::at`] to an instant whose own local
 //!   reading is out of range reports it for every expression that reads the
-//!   pin.
+//!   pin, even where the result itself would be in range.
 //! - `DateCalculationError`: Date arithmetic that has no single result, such
 //!   as a month or year offset that lands on a local time skipped or repeated
 //!   by a daylight-saving transition, or a negative relative amount
 //! - `AmbiguousTime`: Local times that cannot be resolved to an instant
 //! - `InvalidDate`/`InvalidTime`: Components that are out of valid ranges
+//!
+//! ### Out-of-range results
+//!
+//! The `operation` of an `ArithmeticOverflow` names the cause:
+//!
+//! - [`ERR_AMOUNT_OUT_OF_RANGE`] when a relative amount moved the result out
+//!   of range, or [`ERR_YEAR_OVERFLOW`] for a year count too large to convert
+//!   to months;
+//! - [`ERR_RESULT_OUT_OF_RANGE`] when a day reference or a time of day did,
+//!   with no amount to blame;
+//! - a message of its own when the pinned reference time is out of range.
+//!
+//! The jiff backend does not report these the same way. `JiffProvider`
+//! reports most out-of-range results as `DateCalculationError`, with jiff's
+//! reason as its `context`, and uses `ArithmeticOverflow` only for a relative
+//! amount beyond the range of a jiff `Span`. Code that must recognise an
+//! out-of-range result from either backend cannot go by the variant alone;
+//! the range limits in `JiffProvider`'s documentation list jiff's cases.
 
 use chrono::{
     DateTime, Datelike, Days, Local, Months, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta,
@@ -272,6 +290,13 @@ fn shift_months(
 /// This provider uses chrono's `DateTime<Local>` as its datetime type,
 /// providing full support for timezones, DST, and proper date arithmetic.
 ///
+/// ## Range limits
+///
+/// chrono represents about 262,000 years either side of year 0. Every result
+/// outside that range fails with [`TempsError::ArithmeticOverflow`], whose
+/// message names the cause; see the [crate documentation](crate#out-of-range-results)
+/// for the messages and for how the jiff backend differs.
+///
 /// ## Example
 ///
 /// ```
@@ -318,10 +343,14 @@ impl ChronoProvider {
     ///
     /// chrono can hold instants within one zone offset of either end of its
     /// range whose local reading is past `NaiveDateTime::MAX` or before
-    /// `NaiveDateTime::MIN`. Pinned to such an instant, every expression that
-    /// reads the pin, `now` included, fails with
-    /// [`TempsError::ArithmeticOverflow`]; absolute dates and times, which do
-    /// not read it, still resolve.
+    /// `NaiveDateTime::MIN`; the system clock never produces one. Pinned to
+    /// such an instant, every expression resolved relative to the pin (`now`,
+    /// relative offsets, day references, times of day and `later today`) fails
+    /// with [`TempsError::ArithmeticOverflow`]. That holds even where the result
+    /// would be in range: from a pin whose local reading would be a few hours
+    /// past `NaiveDateTime::MAX`, `10 hours ago` is rejected although its
+    /// result has a local reading. The check is on the pin, not on the result.
+    /// Absolute dates and times, which do not read the pin, still resolve.
     #[must_use]
     pub fn at(now: DateTime<Local>) -> Self {
         Self { now: Some(now) }
