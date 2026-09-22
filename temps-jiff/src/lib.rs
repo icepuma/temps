@@ -77,8 +77,9 @@ use temps_core::{
 /// UTC, `9999-12-30T17:00:00` at `-05:00` and `9999-12-31T07:00:00` at `+09:00`.
 /// A date-only expression resolves to local midnight, so `9999-12-31` fails in
 /// UTC but succeeds in `Asia/Tokyo`. Past that point, absolute expressions and
-/// times of day fail with `TempsError::BackendError`. Relative expressions
-/// (`in 1 day` from `9999-12-30T12:00`, say), day references (`tomorrow`) and
+/// bare times of day (`22:30`) fail with `TempsError::BackendError`. Relative
+/// expressions (`in 1 day` from `9999-12-30T12:00`, say), day references with
+/// or without a time (`tomorrow`, `tomorrow at 10:00`, `tonight`) and
 /// `later today` fail with `TempsError::DateCalculationError`.
 ///
 /// **Lower edge.** The first accepted local datetime is `-009999-01-02T01:59:59`
@@ -88,8 +89,8 @@ use temps_core::{
 /// relative expressions (`12100 years ago`) and expressions resolved against a
 /// clock pinned near the edge can. Those fail with
 /// `TempsError::DateCalculationError`, or with `TempsError::BackendError` for a
-/// time of day that falls before the limit. A time on the first representable
-/// day still resolves when the time itself is in range: pinned at
+/// bare time of day that falls before the limit. A time on the first
+/// representable day still resolves when the time itself is in range: pinned at
 /// `-009999-01-02T02:30Z`, `today` fails because that day's midnight is out of
 /// range, but `today at 22:00` succeeds.
 ///
@@ -201,6 +202,8 @@ const ERR_TOMORROW_START_OUT_OF_RANGE: &str =
 const ERR_TODAY_END_OUT_OF_RANGE: &str = "The last instant of today is outside the supported range";
 const ERR_DAY_MIDNIGHT_OUT_OF_RANGE: &str =
     "Midnight of the requested day is outside the supported range";
+const ERR_DAY_TIME_OUT_OF_RANGE: &str =
+    "The time on the requested day is outside the supported range";
 
 /// The civil date `day_ref` names, counted in calendar days from `now`'s local
 /// date.
@@ -460,10 +463,15 @@ impl TimeParser for JiffProvider {
                 let (hour, minute, second, nanosecond) =
                     jiff_time_components(hour, day_time.time.minute, day_time.time.second, 0)?;
 
+                // Out of range here means the same thing as for the day's
+                // midnight, so it is reported with the same variant.
                 date.at(hour, minute, second, nanosecond)
                     .to_zoned(now.time_zone().clone())
                     .map_err(|e| {
-                        TempsError::backend_error(format!("Failed to create day time: {e}"), "jiff")
+                        TempsError::date_calculation_with_source(
+                            ERR_DAY_TIME_OUT_OF_RANGE,
+                            e.to_string(),
+                        )
                     })
             }
             TimeExpression::LaterToday => {

@@ -425,6 +425,51 @@ fn day_at_time_on_the_first_representable_day_matches_the_bare_time() {
 }
 
 #[test]
+fn day_at_time_past_either_range_edge_is_a_date_calculation_error() {
+    // A day with a time fails like the day reference alone, not like a bare
+    // time: callers matching on `DateCalculationError` for `tomorrow` get the
+    // same variant for `tomorrow at 10:00`.
+    let near_the_end = JiffProvider::at(utc(9999, 12, 30, 12, 0));
+    let near_the_start = JiffProvider::at(just_after_timestamp_min(30, TimeZone::UTC));
+    let near_the_end_in_new_york =
+        JiffProvider::at(at_zone("America/New_York", 9999, 12, 30, 12, 0));
+
+    // The last and first whole seconds jiff can represent still resolve...
+    assert_eq!(
+        resolve(&near_the_end, "today at 22:00:00", Language::English),
+        utc(9999, 12, 30, 22, 0)
+    );
+    assert_eq!(
+        resolve(&near_the_start, "today at 01:59:59", Language::English).timestamp(),
+        jiff::Timestamp::MIN
+    );
+
+    // ...and one second beyond them does not.
+    let cases = [
+        (&near_the_end, "today at 22:00:01", Language::English),
+        (&near_the_end, "tomorrow at 1:00", Language::English),
+        (&near_the_end, "next friday at 10:00", Language::English),
+        (&near_the_end, "tomorrow evening", Language::English),
+        (&near_the_end, "morgen um 10:00", Language::German),
+        (
+            &near_the_end_in_new_york,
+            "tomorrow at 10:00",
+            Language::English,
+        ),
+        (&near_the_start, "today at 01:59:58", Language::English),
+        (&near_the_start, "heute um 01:00", Language::German),
+    ];
+    for (provider, input, language) in cases {
+        let expr = parse(input, language).unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+        let result = provider.parse_expression(expr);
+        assert!(
+            matches!(result, Err(TempsError::DateCalculationError { .. })),
+            "{input:?} should be a date calculation error, got {result:?}"
+        );
+    }
+}
+
+#[test]
 fn day_at_time_can_reach_back_to_the_first_representable_day() {
     let first_day_at_22 = date(-9999, 1, 2)
         .at(22, 0, 0, 0)
