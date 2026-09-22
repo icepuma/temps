@@ -20,9 +20,9 @@
 //!
 //! ```toml
 //! [dependencies]
-//! temps = { version = "4", features = ["chrono"] }
+//! temps = { version = "5", features = ["chrono"] }
 //! # or
-//! temps = { version = "4", features = ["jiff"] }
+//! temps = { version = "5", features = ["jiff"] }
 //! ```
 //!
 //! ## Examples
@@ -91,7 +91,9 @@
 //! - `chrono`: Enable chrono datetime backend
 //! - `jiff`: Enable jiff datetime backend
 //!
-//! At least one backend must be enabled.
+//! Neither is enabled by default. Enable at least one: without a backend feature the crate
+//! still compiles, but it exports nothing.
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 /// Chrono backend support.
 ///
@@ -101,11 +103,12 @@
 ///
 /// This module re-exports all necessary types for using temps with chrono.
 #[cfg(feature = "chrono")]
+#[cfg_attr(docsrs, doc(cfg(feature = "chrono")))]
 pub mod chrono {
 
     /// The chrono-based time parser implementation
     pub use temps_chrono::ChronoProvider;
-    /// Convenience function to parse directly to DateTime<Local>
+    /// Convenience function to parse directly to `DateTime<Local>`
     pub use temps_chrono::parse_to_datetime;
     /// Re-export all core types
     pub use temps_core::*;
@@ -119,12 +122,19 @@ pub mod chrono {
 ///
 /// This module re-exports all necessary types for using temps with jiff.
 #[cfg(feature = "jiff")]
+#[cfg_attr(docsrs, doc(cfg(feature = "jiff")))]
 pub mod jiff {
 
     /// Re-export all core types
     pub use temps_core::*;
     /// The jiff-based time parser implementation
     pub use temps_jiff::JiffProvider;
-    /// Convenience function to parse directly to Zoned
+    /// Convenience function to parse directly to `Zoned`
     pub use temps_jiff::parse_to_zoned;
 }
+
+// Compile and run the README's Rust code blocks as doctests, so the snippets users copy cannot
+// drift from the API. `cfg(doctest)` keeps this out of normal builds and of the rendered docs.
+#[cfg(all(doctest, feature = "chrono", feature = "jiff"))]
+#[doc = include_str!("../../README.md")]
+pub struct ReadmeDoctests;
